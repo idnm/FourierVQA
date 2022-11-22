@@ -3,3 +3,6 @@
 /slow_waves_conjecture.ipynb
 /venv/
 /.ipynb_checkpoints/
+/.idea/
+__pycache__/
+tests/__pycache__/
