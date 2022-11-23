@@ -5,10 +5,18 @@ from qiskit import QuantumCircuit, QiskitError
 
 import numpy as np
 from qiskit.circuit import ParameterExpression
+from qiskit.circuit.library import RZZGate, RZGate, RYGate, RXGate
 from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Operator, Statevector
 
 
 class CliffordPhi(QuantumCircuit):
+
+    @staticmethod
+    def from_quantum_circuit(circuit):
+        """Construct a CliffordPhi from a quantum circuit."""
+        qc = CliffordPhi(circuit.num_qubits)
+        qc.data = circuit.data
+        return qc
 
     def __init__(self, n):
         super().__init__(n)
@@ -60,12 +68,12 @@ class CliffordPhi(QuantumCircuit):
 
     def clifford_gates(self):
         """Clifford gates in the circuit."""
-        parametric_gates, clifford_gates = self.gates()
+        clifford_gates, parametric_gates = self.gates()
         return clifford_gates
 
     def parametric_gates(self):
         """Parametric gates in the circuit."""
-        parametric_gates, clifford_gates = self.gates()
+        clifford_gates, parametric_gates  = self.gates()
         return parametric_gates
 
     @staticmethod
@@ -105,7 +113,7 @@ class CliffordPhi(QuantumCircuit):
         clifford_gates = self.clifford_gates()
         for gate in self.parametric_gates():
             gate_pauli = gate.pauli_operator()
-            preceeding_clifford = reduce(lambda c1, c2: c1.compose(c2), clifford_gates[:gate.index])
+            preceeding_clifford = reduce(lambda c1, c2: c1.compose(c2), clifford_gates[:gate.after_clifford_num])
             generator = gate_pauli.evolve(preceeding_clifford.adjoint())
             all_generators.append(generator)
 
@@ -142,7 +150,7 @@ class CliffordPhi(QuantumCircuit):
             try:
                 # If the gate is clifford extend the current one.
                 gate = Clifford(gate)
-                clifford_gate.compose(gate)
+                clifford_gate = clifford_gate.compose(gate)
             except QiskitError:
                 # If the gate is not clifford, add the current accumulated clifford one to the list and start a new one.
                 clifford_gates.append(clifford_gate)
@@ -150,34 +158,38 @@ class CliffordPhi(QuantumCircuit):
 
                 # If the gate is parametric add it to the parametric list.
                 if self._is_parametric(gate):
-                    pauli_rotation = PauliRotation(gate, qargs, len(clifford_gates))
+                    pauli_rotation = PauliRotation(gate, qargs, len(clifford_gates)-1)
                     parametric_gates.append(pauli_rotation)
 
                 else:
                     raise TypeError(f"Gate {gate} is neither Clifford nor parametric Pauli")
 
-        return parametric_gates, clifford_gates
+        # Append the last clifford gate, whether trivial or not
+        clifford_gates.append(clifford_gate)
+
+        return clifford_gates, parametric_gates
 
 
 class PauliRotation:
 
-    pauli_rotation_gates = {
-        'rx': 'X',
-        'ry': 'Y',
-        'rz': 'Z',
+    pauli_gates = {
+        'rx': [RXGate, 'X'],
+        'ry': [RYGate, 'Y'],
+        'rz': [RZGate, 'Z'],
+        'rzz': [RZZGate, 'ZZ'],
     }
 
-    def __init__(self, gate, qargs, index):
-        self.gate = gate.name
-        self.num_qubits = gate.num_qubits
+    def __init__(self, gate, qargs, after_clifford_num):
+        self.gate = gate
         self.qubit_indices = [q._index for q in qargs]
-        self.index = index
+        self.after_clifford_num = after_clifford_num
+        self.num_qubits = qargs[0]._register.size
 
     def pauli_operator(self):
-        label = 'I'*self.num_qubits
+        labels = ['I']*self.num_qubits
         for n, index in enumerate(self.qubit_indices):
-            label[index] = PauliRotation.pauli_rotation_gates[self.gate][n]
-        return Pauli.from_label(label)
+            labels[index] = PauliRotation.pauli_gates[self.gate.name][1][n]
+        return Pauli.from_label(''.join(labels))
 
 
 X = np.array([[0, 1], [1, 0]], dtype=np.complex64)
