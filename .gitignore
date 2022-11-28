@@ -6,3 +6,8 @@
 /.idea/
 __pycache__/
 tests/__pycache__/
+/tex/slow_waves.synctex.gz
+/tex/slow_waves.log
+/tex/slow_waves.out
+/tex/slow_waves.pdf
+/tex/slow_waves.aux
