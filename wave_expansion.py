@@ -65,16 +65,21 @@ class CliffordPhi(QuantumCircuit):
 
     def average(self, loss):
         """Compute the average of the loss function over all parameters in the circuit."""
-        # General loos will be represented as a sum of pauli losses.
-        return sum([self.average_pauli(pauli_loss) for pauli_loss in loss.pauli_losses()])
+        individual_averages = [
+            coeff * self.average_pauli(pauli) for coeff, pauli in zip(loss.coefficients, loss.pauli_operators)
+        ]
+        return sum(individual_averages) / self.num_parameters**2
 
     def lattice_average(self, loss):
         """Compute loss average by summing over all lattice points."""
 
-        def loss_func(params):
-            state = Statevector.evolve(self)
+        state_0 = Statevector.from_label('0' * self.num_qubits)
 
-            averages = [c*state.expectation_value(p) for c, p in loss.pauli_losses()]
+        def loss_func(params):
+            qc = self.bind_parameters(params)
+            state = state_0.evolve(qc)
+
+            averages = [coeff*state.expectation_value(pauli) for coeff, pauli in zip(loss.coefficients, loss.pauli_operators)]
             return sum(averages)
 
         grid = list(product(*[[0, 1]] * len(self.parameters)))
@@ -83,32 +88,44 @@ class CliffordPhi(QuantumCircuit):
 
         return sum(losses) / len(losses)
 
-    def average_pauli(self, pauli_loss):
+    def average_pauli(self, pauli):
         """Compute the average of a Pauli Hamiltonian over all parameters in the circuit."""
-        coeff, pauli = pauli_loss
-        loss_generators = self.generators_loss(self.support(pauli))
+        num_duplicates, loss_generators = self.generators_loss(self.support(pauli))
         multiplicity, group = self.pauli_group(loss_generators)
-        return coeff * multiplicity * self.group_average(group, pauli)
+        return 2**num_duplicates * multiplicity * self.group_average(group, pauli)
 
     @staticmethod
     def support(pauli):
         return [i for i, gate in enumerate(pauli.to_label()) if gate != 'I']
 
-    def group_average(self, group, pauli_string):
+    def group_average(self, group, pauli):
         """Compute the average (unnormalized) of a Pauli Hamiltonian over a group of Clifford operators."""
-        group_sum = []
+
+        state_0 = StabilizerState(QuantumCircuit(self.num_qubits))
+        group_sum = 0
+
         for element in group:
-            circuit = self.clifford_total().compose(element)
-            state = StabilizerState(circuit)
-            group_sum.append(state.expectation_value(pauli_string))
+            state = self.evolve_state_using_all_clifford_gates(state_0)
+            state = state.evolve(element)
+            group_sum += state.expectation_value(pauli)
 
-        return sum(group_sum)
+        return group_sum
 
-    def evolve_using_all_clifford_gates(self, pauli):
+    def evolve_pauli_using_all_clifford_gates(self, pauli):
         """Evolve a Pauli operator using all Clifford gates in the circuit."""
         for gate in self.clifford_gates():
             pauli = pauli.evolve(gate)
         return pauli
+
+    def evolve_state_using_all_clifford_gates(self, state=None):
+        """Evolve a state using all clifford gates ."""
+        if state is None:
+            state = StabilizerState(QuantumCircuit(self.num_qubits))
+
+        for gate in self.clifford_gates():
+            state = state.evolve(gate)
+
+        return state
 
     @staticmethod
     def pauli_group(generators):
@@ -118,10 +135,7 @@ class CliffordPhi(QuantumCircuit):
 
         trivial_generator = Pauli('I'*generators[0].num_qubits)
         non_trivial_generators = [g for g in generators if not g.equiv(trivial_generator)]
-        if not non_trivial_generators:
-            return 2**(len(generators)-1), {trivial_generator}
-        else:
-            num_dependent_generators = len(generators) - len(non_trivial_generators)
+        num_dependent_generators = len(generators) - len(non_trivial_generators)
 
         group = [Pauli('I'*generators[0].num_qubits)]
         for generator in non_trivial_generators:
@@ -152,8 +166,8 @@ class CliffordPhi(QuantumCircuit):
 
         Note that loss support qubit ordering follows the qiskit little-endian convention.
         """
-        num_duplicates, generatros = self.generators_H()
-        generator_labels = [g.to_label() for g in generatros]
+        num_duplicates, generators = self.generators_H()
+        generator_labels = [g.to_label() for g in generators]
         projected_labels = [''.join([l[i] for i in loss_support]) for l in generator_labels]
         distinct_projected_labels = list(dict.fromkeys(projected_labels))
 
@@ -167,7 +181,7 @@ class CliffordPhi(QuantumCircuit):
     def generators_H(self):
         """Generators of a Pauli subgroup relevant for a generic loss function"""
         num_duplicates_0, generators_0 = self.generators_0()
-        generators = [self.evolve_using_all_clifford_gates(g) for g in generators_0]
+        generators = [self.evolve_pauli_using_all_clifford_gates(g) for g in generators_0]
         for generator in generators:
             generator.phase = 0
 
@@ -226,6 +240,12 @@ X = np.array([[0, 1], [1, 0]], dtype=np.complex64)
 Z = np.array([[1, 0], [0, -1]], dtype=np.complex64)
 
 
+class Loss:
+    def __init__(self, coefficients, pauli_operators):
+        self.coefficients = coefficients
+        self.pauli_operators = pauli_operators
+
+
 def multi_kronecker(matrix_list):
     return reduce(lambda m1, m2: np.kron(m1, m2), matrix_list)
 
@@ -266,11 +286,3 @@ class PauliString:
 
     def __hash__(self):
         return int(''.join([str(i) for i in np.concatenate([self.z, self.x])]), 2)
-
-from qiskit.circuit import Parameter, ParameterExpression
-qc = CliffordPhi(2)
-qc.h(0)
-qc.rzz(Parameter('x'), 0, 1)
-qc.h(0)
-print(qc.generators_0())
-qc.draw()

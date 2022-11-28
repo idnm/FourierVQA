@@ -3,7 +3,7 @@ import random
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
-from qiskit.quantum_info import random_clifford, Operator, Pauli
+from qiskit.quantum_info import random_clifford, Operator, Pauli, Statevector
 
 from wave_expansion import CliffordPhi, PauliString, PauliRotation
 
@@ -26,7 +26,7 @@ def random_clifford_phi(num_qubits, num_parameters, seed=0):
 
         qc.append(parametric_gate(parameter), position)
 
-    return qc
+    return CliffordPhi.from_quantum_circuit(qc)
 
 
 def reconstruct_circuit(qc0):
@@ -125,14 +125,14 @@ def test_pauli_group():
     """Test the pauli group is generated correctly."""
 
     generators = [Pauli('I')]
-    multiplicity, puali_group = CliffordPhi.pauli_group(generators)
-    assert multiplicity == 1
-    assert puali_group == {Pauli('I')}
+    multiplicity, pauli_group = CliffordPhi.pauli_group(generators)
+    assert multiplicity == 2
+    assert pauli_group == {Pauli('I')}
 
     generators = [Pauli('I'*10)]
-    multiplicity, puali_group = CliffordPhi.pauli_group(generators)
-    assert multiplicity == 1
-    assert puali_group == {Pauli('I'*10)}
+    multiplicity, pauli_group = CliffordPhi.pauli_group(generators)
+    assert multiplicity == 2
+    assert pauli_group == {Pauli('I'*10)}
 
     generators = [Pauli('Y')]
     multiplicity, pauli_group = CliffordPhi.pauli_group(generators)
@@ -148,4 +148,85 @@ def test_pauli_group():
     multiplicity, pauli_group = CliffordPhi.pauli_group(generators)
     assert multiplicity == 4
     assert pauli_group == {Pauli('II'), Pauli('XZ'), Pauli('ZX'), Pauli('YY')}
+
+
+def matrix_average(state, pauli):
+    """Compute the average of a pauli operator over a state."""
+    state = state.data
+    H = pauli.to_matrix()
+    return np.real(state.conj().T @ H @ state)
+
+
+def test_group_average():
+
+    # Trivial circuit and group
+    num_qubits = 3
+    qc = CliffordPhi(num_qubits)
+    state_0 = Statevector(qc)
+
+    pauli_H = Pauli('ZZZ')
+    multiplicity, group = CliffordPhi.pauli_group([Pauli('I'*num_qubits)])
+
+    assert np.allclose(
+        qc.group_average(group, pauli_H),
+        matrix_average(state_0, pauli_H)
+    )
+
+    # Trivial circuit non-trivial group
+    num_qubits = 4
+    qc = CliffordPhi(num_qubits)
+    state_0 = Statevector(qc)
+
+    pauli_H = Pauli('IIII')
+    multiplicity, group = CliffordPhi.pauli_group([Pauli('XYZI'), Pauli('ZZXX'), Pauli('IYIY')])
+
+    average = 0
+    for pauli in group:
+        state = state_0.evolve(pauli)
+        average += matrix_average(state, pauli_H)
+
+    assert np.allclose(
+        qc.group_average(group, pauli_H),
+        average
+    )
+
+    # Non-trivial circuit trivial group
+    num_qubits = 3
+    qc = CliffordPhi.from_quantum_circuit(random_clifford(num_qubits, seed=0).to_circuit())
+    state_0 = Statevector(qc)
+
+    pauli_H = Pauli('I'*num_qubits)
+    group = {Pauli('I'*num_qubits)}
+
+    assert np.allclose(
+        qc.group_average(group, pauli_H),
+        matrix_average(state_0, pauli_H)
+    )
+
+    # Non-trivial circuit non-trivial group
+    num_qubits = 4
+    # qc = CliffordPhi.from_quantum_circuit(random_clifford(num_qubits, seed=1).to_circuit())
+    qc = CliffordPhi(num_qubits)
+    qc.cx(0, 1)
+    qc.h(2)
+    qc.s(3)
+    qc.cz(3, 0)
+    qc.sdg(3)
+    state_qc = Statevector(qc)
+
+    pauli_H = Pauli('IZIZ')
+    multiplicity, group = CliffordPhi.pauli_group([Pauli('IIZI'), Pauli('IZIZ')])
+    print('group', group)
+    average = 0
+    for pauli in group:
+        state = state_qc.evolve(pauli)
+        average += matrix_average(state, pauli_H)
+
+    print('matrix average', average)
+    print('group average', qc.group_average(group, pauli_H))
+    assert np.allclose(
+        qc.group_average(group, pauli_H),
+        average
+    )
+
 
