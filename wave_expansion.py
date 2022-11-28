@@ -1,3 +1,4 @@
+import random
 from functools import reduce
 from itertools import product
 
@@ -6,7 +7,7 @@ from qiskit import QuantumCircuit, QiskitError
 import numpy as np
 from qiskit.circuit import ParameterExpression
 from qiskit.circuit.library import RZZGate, RZGate, RYGate, RXGate
-from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Operator, Statevector
+from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Operator, Statevector, DensityMatrix, SparsePauliOp
 
 
 class CliffordPhi(QuantumCircuit):
@@ -63,12 +64,16 @@ class CliffordPhi(QuantumCircuit):
     def _is_parametric(gate):
         return gate.params and isinstance(gate.params[0], ParameterExpression)
 
-    def average(self, loss):
-        """Compute the average of the loss function over all parameters in the circuit."""
-        individual_averages = [
-            coeff * self.average_pauli(pauli) for coeff, pauli in zip(loss.coefficients, loss.pauli_operators)
-        ]
-        return sum(individual_averages) / self.num_parameters**2
+    def empiric_average(self, loss, batch_size=100):
+        parameters_batch = 2*np.pi*np.random.rand(batch_size, self.num_parameters)
+        total_loss = 0
+        for parameters in parameters_batch:
+            qc = self.bind_parameters(parameters)
+            state = Statevector(qc)
+            losses = [c*state.expectation_value(p) for c, p in zip(loss.coefficients, loss.paulis)]
+            total_loss += sum(losses)
+
+        return total_loss/batch_size
 
     def lattice_average(self, loss):
         """Compute loss average by summing over all lattice points."""
@@ -79,7 +84,7 @@ class CliffordPhi(QuantumCircuit):
             qc = self.bind_parameters(params)
             state = state_0.evolve(qc)
 
-            averages = [coeff*state.expectation_value(pauli) for coeff, pauli in zip(loss.coefficients, loss.pauli_operators)]
+            averages = [coeff * state.expectation_value(pauli) for coeff, pauli in zip(loss.coefficients, loss.paulis)]
             return sum(averages)
 
         grid = list(product(*[[0, 1]] * len(self.parameters)))
@@ -88,11 +93,46 @@ class CliffordPhi(QuantumCircuit):
 
         return sum(losses) / len(losses)
 
+    def average(self, loss):
+        """Compute the average of the loss function over all parameters in the circuit."""
+        individual_averages = [
+            coeff * self.average_pauli(pauli) for coeff, pauli in zip(loss.coefficients, loss.paulis)
+        ]
+        return sum(individual_averages)
+
     def average_pauli(self, pauli):
         """Compute the average of a Pauli Hamiltonian over all parameters in the circuit."""
-        num_duplicates, loss_generators = self.generators_loss(self.support(pauli))
-        multiplicity, group = self.pauli_group(loss_generators)
-        return 2**num_duplicates * multiplicity * self.group_average(group, pauli)
+        state_0 = StabilizerState(QuantumCircuit(self.num_qubits))
+        state = self.evolve_state_using_all_clifford_gates(state_0)
+        bare_average = state.expectation_value(pauli)
+        assert bare_average in [-1, 0, 1], f"Average of {pauli} is {bare_average}"
+        if bare_average:
+            generators = self.commuted_generators()
+            all_commute = self.all_commute(generators, pauli)
+            if all_commute:
+                return bare_average
+
+        return 0
+
+    def commuted_generators(self):
+        """Generators of the parametric gates commuted to the end of the circuit"""
+        clifford_gates = self.clifford_gates()
+        generators = []
+        for gate in self.parametric_gates():
+            generator = gate.pauli_operator()
+            for clifford in clifford_gates[gate.after_clifford_num+1:]:
+                generator = generator.evolve(clifford, frame='s')
+            generators.append(generator)
+
+        return generators
+
+    @staticmethod
+    def all_commute(generators, pauli):
+        """Check if all generators commute with a Pauli operator."""
+        for generator in generators:
+            if not pauli.commutes(generator):
+                return False
+        return True
 
     @staticmethod
     def support(pauli):
@@ -241,9 +281,19 @@ Z = np.array([[1, 0], [0, -1]], dtype=np.complex64)
 
 
 class Loss:
-    def __init__(self, coefficients, pauli_operators):
+    def __init__(self, coefficients, paulis):
         self.coefficients = coefficients
-        self.pauli_operators = pauli_operators
+        self.paulis = paulis
+
+    @staticmethod
+    def from_state(state):
+        rho = DensityMatrix(state)
+        pauli_list = SparsePauliOp.from_operator(rho)
+
+        return Loss(pauli_list.coeffs, pauli_list.paulis)
+
+    def matrix(self):
+        return sum(np.array([c * p.to_matrix() for c, p in zip(self.coefficients, self.paulis)]))
 
 
 def multi_kronecker(matrix_list):

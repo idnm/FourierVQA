@@ -3,9 +3,9 @@ import random
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
-from qiskit.quantum_info import random_clifford, Operator, Pauli, Statevector
+from qiskit.quantum_info import random_clifford, Operator, Pauli, Statevector, random_statevector
 
-from wave_expansion import CliffordPhi, PauliString, PauliRotation
+from wave_expansion import CliffordPhi, PauliString, PauliRotation, Loss
 
 
 def test_trivial():
@@ -74,159 +74,23 @@ def qc_for_generator_testing():
     return qc
 
 
-def test_generators_0():
-    """A simple hand-crafted test for commutation of the generators to the vacuum state."""
+def test_loss_from_state():
+    """Test reconstructing density matrix from the loss function."""
+    state = random_statevector(2**4, seed=0)
+    loss = Loss.from_state(state)
+    rho_matrix = np.outer(state.data, state.data.conj().T)
 
-    qc = qc_for_generator_testing()
-    num_duplicates, generators = qc.generators_0()
-    assert num_duplicates == 1
-    assert set(generators) == {Pauli('IIX'), Pauli('IXI'), Pauli('XII')}
-
-
-def test_generators_H():
-    """A simple hand-crafted test for commutation of the generators to Hamiltonian."""
-
-    qc = qc_for_generator_testing()
-    num_duplicates, generators = qc.generators_H()
-    assert num_duplicates == 1
-    assert set(generators) == {Pauli('XIX'), Pauli('IZI'), Pauli('XII')}
+    assert np.allclose(rho_matrix, loss.matrix())
 
 
-def test_generators_loss():
-    """A simple hand-crafted test for commutation of the generators to the loss operator."""
+def test_average():
+    """Test computing the average of a Pauli operator over a density matrix."""
 
-    qc = qc_for_generator_testing()
+    for num_qubits in range(2, 5):
+        for num_parameters in range(6):
+            qc = random_clifford_phi(num_qubits, num_parameters, seed=41)
+            state = random_statevector(2 ** num_qubits, seed=42)
 
-    # Test full support. Should catch qubit ordering issues.
-    loss_support = [0, 1, 2]
-    num_duplicates_H, generators_H = qc.generators_loss(loss_support)
-    num_duplicates, generators = qc.generators_loss(loss_support)
-    assert num_duplicates == num_duplicates_H
-    assert set(generators) == set(generators_H)
+            loss = Loss.from_state(state)
 
-    # Test partial support.
-    loss_support = [2, 1]
-    num_duplicates, generators = qc.generators_loss(loss_support)
-    assert num_duplicates == 1
-    assert set(generators) == {Pauli('IIX'), Pauli('IZI'), Pauli('III')}
-
-    loss_support = [1, 0]
-    num_duplicates, generators = qc.generators_loss(loss_support)
-    assert num_duplicates == 2
-    assert set(generators) == {Pauli('XII'), Pauli('IZI')}
-
-    loss_support = [0]
-    num_duplicates, generators = qc.generators_loss(loss_support)
-    assert num_duplicates == 2
-    assert set(generators) == {Pauli('XII'), Pauli('III')}
-
-
-def test_pauli_group():
-    """Test the pauli group is generated correctly."""
-
-    generators = [Pauli('I')]
-    multiplicity, pauli_group = CliffordPhi.pauli_group(generators)
-    assert multiplicity == 2
-    assert pauli_group == {Pauli('I')}
-
-    generators = [Pauli('I'*10)]
-    multiplicity, pauli_group = CliffordPhi.pauli_group(generators)
-    assert multiplicity == 2
-    assert pauli_group == {Pauli('I'*10)}
-
-    generators = [Pauli('Y')]
-    multiplicity, pauli_group = CliffordPhi.pauli_group(generators)
-    assert multiplicity == 1
-    assert pauli_group == {Pauli('I'), Pauli('Y')}
-
-    generators = [Pauli('I'), Pauli('Z')]
-    multiplicity, pauli_group = CliffordPhi.pauli_group(generators)
-    assert multiplicity == 2
-    assert pauli_group == {Pauli('I'), Pauli('Z')}
-
-    generators = [Pauli('XZ'), Pauli('ZX'), Pauli('YY'), Pauli('II')]
-    multiplicity, pauli_group = CliffordPhi.pauli_group(generators)
-    assert multiplicity == 4
-    assert pauli_group == {Pauli('II'), Pauli('XZ'), Pauli('ZX'), Pauli('YY')}
-
-
-def matrix_average(state, pauli):
-    """Compute the average of a pauli operator over a state."""
-    state = state.data
-    H = pauli.to_matrix()
-    return np.real(state.conj().T @ H @ state)
-
-
-def test_group_average():
-
-    # Trivial circuit and group
-    num_qubits = 3
-    qc = CliffordPhi(num_qubits)
-    state_0 = Statevector(qc)
-
-    pauli_H = Pauli('ZZZ')
-    multiplicity, group = CliffordPhi.pauli_group([Pauli('I'*num_qubits)])
-
-    assert np.allclose(
-        qc.group_average(group, pauli_H),
-        matrix_average(state_0, pauli_H)
-    )
-
-    # Trivial circuit non-trivial group
-    num_qubits = 4
-    qc = CliffordPhi(num_qubits)
-    state_0 = Statevector(qc)
-
-    pauli_H = Pauli('IIII')
-    multiplicity, group = CliffordPhi.pauli_group([Pauli('XYZI'), Pauli('ZZXX'), Pauli('IYIY')])
-
-    average = 0
-    for pauli in group:
-        state = state_0.evolve(pauli)
-        average += matrix_average(state, pauli_H)
-
-    assert np.allclose(
-        qc.group_average(group, pauli_H),
-        average
-    )
-
-    # Non-trivial circuit trivial group
-    num_qubits = 3
-    qc = CliffordPhi.from_quantum_circuit(random_clifford(num_qubits, seed=0).to_circuit())
-    state_0 = Statevector(qc)
-
-    pauli_H = Pauli('I'*num_qubits)
-    group = {Pauli('I'*num_qubits)}
-
-    assert np.allclose(
-        qc.group_average(group, pauli_H),
-        matrix_average(state_0, pauli_H)
-    )
-
-    # Non-trivial circuit non-trivial group
-    num_qubits = 4
-    # qc = CliffordPhi.from_quantum_circuit(random_clifford(num_qubits, seed=1).to_circuit())
-    qc = CliffordPhi(num_qubits)
-    qc.cx(0, 1)
-    qc.h(2)
-    qc.s(3)
-    qc.cz(3, 0)
-    qc.sdg(3)
-    state_qc = Statevector(qc)
-
-    pauli_H = Pauli('IZIZ')
-    multiplicity, group = CliffordPhi.pauli_group([Pauli('IIZI'), Pauli('IZIZ')])
-    print('group', group)
-    average = 0
-    for pauli in group:
-        state = state_qc.evolve(pauli)
-        average += matrix_average(state, pauli_H)
-
-    print('matrix average', average)
-    print('group average', qc.group_average(group, pauli_H))
-    assert np.allclose(
-        qc.group_average(group, pauli_H),
-        average
-    )
-
-
+            assert np.allclose(qc.lattice_average(loss), qc.average(loss))
