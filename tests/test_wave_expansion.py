@@ -3,13 +3,9 @@ import random
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
-from qiskit.quantum_info import random_clifford, Operator, Pauli, Statevector, random_statevector
+from qiskit.quantum_info import random_clifford, Operator, random_statevector
 
-from wave_expansion import CliffordPhi, PauliString, PauliRotation, Loss
-
-
-def test_trivial():
-    assert PauliString.trivial(2) == PauliString([0, 0], [0, 0])
+from wave_expansion import CliffordPhi, PauliRotation, Loss
 
 
 def random_clifford_phi(num_qubits, num_parameters, seed=0):
