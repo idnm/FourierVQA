@@ -1,5 +1,3 @@
-from functools import reduce
-from functools import reduce
 from itertools import product
 
 import numpy as np
@@ -7,6 +5,68 @@ from qiskit import QuantumCircuit, QiskitError
 from qiskit.circuit import ParameterExpression
 from qiskit.circuit.library import RZZGate, RZGate, RYGate, RXGate
 from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Statevector, DensityMatrix, SparsePauliOp
+
+
+class CliffordPhiVQA:
+    def __int__(self, circuit, loss):
+        self.circuit = circuit
+        self.loss = loss
+        self.fourier_modes = []
+
+    def compute_fourier_mode(self, order):
+        assert len(self.fourier_modes) == order, f'Modes must be computed in order. Found {len(self.fourier_modes)} modes'
+        poly_dict = {}
+        for parameter_configuration in self.parameter_configurations(order):
+
+            def pcircuit(p):
+                return self.circuit.fix_parameters(dict(zip(parameter_configuration, p)))
+
+            def centered_average(p):
+                average = pcircuit(p).average(self.loss)
+                shift = sum([fourier_mode.evaluate_at(p) for fourier_mode in self.fourier_modes[:order]])
+                return average - shift
+            poly_dict[parameter_configuration] = TrigonometricPolynomial.from_function(centered_average)
+
+        fourier_mode = FourierMode(poly_dict)
+        self.fourier_modes.append[fourier_mode]
+
+        return fourier_mode
+
+
+class FourierMode:
+    def __int__(self, poly_dict):
+        self.poly_dict = poly_dict
+
+    def evaluate_at(self, parameters):
+        parameters = np.array(parameters)
+        return sum([polynomial.evaluate_at(parameters[configuration]) for configuration, polynomial in self.poly_dict.items()])
+
+
+class TrigonometricPolynomial:
+    def __init__(self, coefficients):
+        self.coefficients = coefficients
+        self.num_parameters = int(np.log2(len(coefficients)))
+
+    def evaluate_at(self, parameters):
+        return (self.coefficients * np.array([m(parameters) for m in self.monomials(self.num_parameters)])).sum()
+
+    @staticmethod
+    def from_function(f, num_parameters):
+        coefficients = [f(g) for g in np.pi/2*TrigonometricPolynomial.binary_grid(num_parameters)]
+        return TrigonometricPolynomial(coefficients)
+
+    @staticmethod
+    def binary_grid(num_parameters):
+        grid = list(product(*[[0, 1]] * num_parameters))
+        return np.array(grid)
+
+    @staticmethod
+    def monomial(power):
+        return lambda p: np.product(np.cos(p)**(1-power) * np.sin(p)**power)
+
+    @staticmethod
+    def monomials(num_parameters):
+        return [TrigonometricPolynomial.monomial(power) for power in TrigonometricPolynomial.binary_grid(num_parameters)]
 
 
 class CliffordPhi(QuantumCircuit):
@@ -86,7 +146,7 @@ class CliffordPhi(QuantumCircuit):
             averages = [coeff * state.expectation_value(pauli) for coeff, pauli in zip(loss.coefficients, loss.paulis)]
             return sum(averages)
 
-        grid = list(product(*[[0, 1]] * len(self.parameters)))
+        grid = TrigonometricPolynomial.binary_grid(self.num_parameters)
         grid = np.pi * np.array(grid)
         losses = [loss_func(p) for p in grid]
 

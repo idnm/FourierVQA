@@ -5,7 +5,7 @@ from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
 from qiskit.quantum_info import random_clifford, Operator, random_statevector
 
-from wave_expansion import CliffordPhi, PauliRotation, Loss
+from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial
 
 
 def random_clifford_phi(num_qubits, num_parameters, seed=0):
@@ -82,11 +82,46 @@ def test_loss_from_state():
 def test_average():
     """Test computing the average of a Pauli operator over a density matrix."""
 
-    for num_qubits in range(2, 5):
-        for num_parameters in range(6):
+    for num_qubits in range(2, 3):
+        for num_parameters in range(4):
             qc = random_clifford_phi(num_qubits, num_parameters, seed=41)
             state = random_statevector(2 ** num_qubits, seed=42)
 
             loss = Loss.from_state(state)
 
             assert np.allclose(qc.lattice_average(loss), qc.average(loss))
+
+
+def test_trigonometric_polynomial():
+    """Test constructing and reconstructing trigonometric polynomial"""
+
+    # Single variable
+    def p(x):
+        return 0.2 * np.cos(x[0]) - 1.3 * np.sin(x[0])
+
+    tp = TrigonometricPolynomial.from_function(p, 1)
+
+    xx = np.linspace(0, 2 * np.pi, 40)
+    p_values = np.array([p([x]) for x in xx])
+    tp_values = np.array([tp.evaluate_at([x]) for x in xx])
+
+    assert np.allclose(p_values, tp_values)
+
+    # Three variables
+    def p(x):
+        return 0.2*np.cos(x[0])*np.cos(x[1])*np.cos(x[2])\
+               -2.*np.cos(x[0])*np.cos(x[1])*np.sin(x[2])\
+               +12.34*np.cos(x[0])*np.sin(x[1])*np.cos(x[2])\
+               -0.786*np.cos(x[0])*np.sin(x[1])*np.sin(x[2])\
+               +np.pi*np.sin(x[0])*np.cos(x[1])*np.cos(x[2])\
+               +np.e*np.sin(x[0])*np.cos(x[1])*np.sin(x[2])\
+               -0.7112*np.sin(x[0])*np.sin(x[1])*np.cos(x[2])\
+               -10.*np.sin(x[0])*np.sin(x[1])*np.sin(x[2])
+
+    tp = TrigonometricPolynomial.from_function(p, 3)
+
+    xx = 2*np.pi*np.random.rand(100, 3)
+    p_values = [p(x) for x in xx]
+    tp_values = [tp.evaluate_at(x) for x in xx]
+
+    assert np.allclose(p_values, tp_values)
