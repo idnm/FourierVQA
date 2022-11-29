@@ -1,4 +1,4 @@
-from itertools import product
+from itertools import product, combinations
 
 import numpy as np
 from qiskit import QuantumCircuit, QiskitError
@@ -14,12 +14,16 @@ class CliffordPhiVQA:
         self.fourier_modes = []
 
     def compute_fourier_mode(self, order):
-        assert len(self.fourier_modes) == order, f'Modes must be computed in order. Found {len(self.fourier_modes)} modes'
+        # Compute previous Fourier modes if necessary
+        if len(self.fourier_modes) < order:
+            self.compute_fourier_mode(order-1)
+
         poly_dict = {}
         for parameter_configuration in self.parameter_configurations(order):
 
             def pcircuit(p):
-                return self.circuit.fix_parameters(dict(zip(parameter_configuration, p)))
+                parameter_dict = dict(zip(parameter_configuration, p))
+                return self.circuit.fix_parameters(parameter_dict)
 
             def centered_average(p):
                 average = pcircuit(p).average(self.loss)
@@ -31,6 +35,10 @@ class CliffordPhiVQA:
         self.fourier_modes.append[fourier_mode]
 
         return fourier_mode
+
+    @staticmethod
+    def parameter_configurations(num_parameters, order):
+        return combinations(range(num_parameters), order)
 
 
 class FourierMode:
@@ -86,7 +94,8 @@ class CliffordPhi(QuantumCircuit):
         parametric_gates = []
 
         clifford_gate = Clifford(QuantumCircuit(self.num_qubits))
-        for gate, qargs, cargs in self.data:
+        for instruction in self.data:
+            gate, qargs, cargs = instruction
             try:
                 # If the gate is clifford extend the current one.
                 gate = Clifford(gate)
@@ -97,7 +106,7 @@ class CliffordPhi(QuantumCircuit):
                 clifford_gate = Clifford(QuantumCircuit(self.num_qubits))
 
                 # If the gate is parametric add it to the parametric list.
-                if self._is_parametric(gate):
+                if instruction.operation.is_parameterized():
                     pauli_rotation = PauliRotation(gate, qargs, len(clifford_gates) - 1)
                     parametric_gates.append(pauli_rotation)
 
@@ -118,10 +127,6 @@ class CliffordPhi(QuantumCircuit):
         """Parametric gates in the circuit."""
         clifford_gates, parametric_gates  = self.gates()
         return parametric_gates
-
-    @staticmethod
-    def _is_parametric(gate):
-        return gate.params and isinstance(gate.params[0], ParameterExpression)
 
     def empiric_average(self, loss, batch_size=100):
         parameters_batch = 2*np.pi*np.random.rand(batch_size, self.num_parameters)
@@ -202,6 +207,19 @@ class CliffordPhi(QuantumCircuit):
             state = state.evolve(gate)
 
         return state
+
+    def fix_parameters(self, parameter_dict):
+        assert all([np.allclose(p, 0) or np.allclose(p, np.pi/2) for p in parameter_dict.values()]), 'Only can assign 0 or pi/2.'
+
+        qc = self.copy()
+
+        i_parametric_gate = 0
+        for gate, qargs, cargs in self.data:
+            pass
+
+
+
+
 
 
 class PauliRotation:
