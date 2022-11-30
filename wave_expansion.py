@@ -3,7 +3,7 @@ from itertools import product, combinations
 import numpy as np
 from qiskit import QuantumCircuit, QiskitError
 from qiskit.circuit import ParameterExpression
-from qiskit.circuit.library import RZZGate, RZGate, RYGate, RXGate
+from qiskit.circuit.library import RZZGate, RZGate, RYGate, RXGate, IGate
 from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Statevector, DensityMatrix, SparsePauliOp
 
 
@@ -209,17 +209,14 @@ class CliffordPhi(QuantumCircuit):
         return state
 
     def fix_parameters(self, parameter_dict):
-        assert all([np.allclose(p, 0) or np.allclose(p, np.pi/2) for p in parameter_dict.values()]), 'Only can assign 0 or pi/2.'
 
         qc = self.copy()
+        parametric_instructions = [instruction for instruction in qc.data if instruction.operation.is_parameterized()]
+        for parameter_index, parameter_value in parameter_dict.items():
+            gate = parametric_instructions[parameter_index].operation
+            gate = PauliRotation.fix_parameter(gate, parameter_value)
 
-        i_parametric_gate = 0
-        for gate, qargs, cargs in self.data:
-            pass
-
-
-
-
+        return qc
 
 
 class PauliRotation:
@@ -243,6 +240,61 @@ class PauliRotation:
             labels[index] = PauliRotation.pauli_gates[self.gate.name][1][n]
         labels = labels[::-1]  # Qiskits little-endian convention
         return Pauli(''.join(labels))
+
+    @staticmethod
+    def fix_parameter(gate, parameter_value):
+        num_qubits = gate.num_qubits
+        if np.allclose(parameter_value, 0):
+            gate = IGate()
+            gate.num_qubits = num_qubits
+        elif np.allclose(parameter_value, np.pi/2):
+            gate_pauli = PauliRotation.pauli_gates[gate.name][1]
+            gate = PauliRotation.pauli_root(Pauli(gate_pauli))
+        return gate
+
+    # @staticmethod
+    # def pauli_root(pauli):
+    #     """Construct a Clifford gate implementing (1-iP)/sqrt(2)"""
+    #     qc = QuantumCircuit(pauli.num_qubits)
+    #     for qubit, label in enumerate(pauli.to_label()):
+    #         print(f'appendig root of {Pauli(label)}')
+    #         qc.append(PauliRotation.pauli_root_single(Pauli(label)), [qubit])
+    #     return qc.reverse_bits()
+
+    @staticmethod
+    def pauli_root(pauli):
+        """Construct a Clifford gate implementing (1-iP)/sqrt(2)"""
+
+        num_qubits = pauli.num_qubits
+        z_generators = ['I' * i + 'Z' + 'I' * (num_qubits - i - 1) for i in range(num_qubits)][::-1]
+        x_generators = ['I' * i + 'X' + 'I' * (num_qubits - i - 1) for i in range(num_qubits)][::-1]
+
+        stabilizers = [Pauli(g) if Pauli(g).commutes(pauli) else -1j * Pauli(g).compose(pauli) for g in z_generators]
+        destabilizers = [Pauli(g) if Pauli(g).commutes(pauli) else -1j * Pauli(g).compose(pauli) for g in x_generators]
+
+        stabilizers = [s.to_label() for s in stabilizers]
+        destabilizers = [s.to_label() for s in destabilizers]
+
+        cliff = Clifford.from_dict({'stabilizer': stabilizers, 'destabilizer': destabilizers})
+        return cliff.to_circuit()
+
+    @staticmethod
+    def pauli_root_single(pauli):
+        qc = QuantumCircuit(1)
+        label = pauli.to_label()
+        if label == 'Z':
+            qc.s(0)
+        elif label == 'X':
+            qc.h(0)
+            qc.s(0)
+            qc.h(0)
+        elif label == 'Y':
+            qc.sdg(0)
+            qc.h(0)
+            qc.s(0)
+            qc.h(0)
+            qc.s(0)
+        return Clifford(qc).to_circuit()
 
 
 class Loss:

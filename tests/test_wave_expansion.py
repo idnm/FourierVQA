@@ -3,7 +3,7 @@ import random
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
-from qiskit.quantum_info import random_clifford, Operator, random_statevector
+from qiskit.quantum_info import random_clifford, Operator, random_statevector, Pauli
 
 from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial
 
@@ -125,3 +125,20 @@ def test_trigonometric_polynomial():
     tp_values = [tp.evaluate_at(x) for x in xx]
 
     assert np.allclose(p_values, tp_values)
+
+
+def test_pauli_root():
+
+    for label in ['X', 'Y', 'Z', 'XY', 'XYZ', 'IXYZ', 'IXIYYX', 'IXIZZY']:
+        pauli = Pauli(label)
+        num_qubits = pauli.num_qubits
+
+        # Take square root directly
+        qc = QuantumCircuit(num_qubits)
+        qc.append(pauli.to_instruction().power(1/2), range(num_qubits))
+
+        # Use clifford square root
+        qc_sqrt = QuantumCircuit(num_qubits)
+        qc_sqrt.append(PauliRotation.pauli_root(pauli), range(num_qubits))
+
+        assert Operator(qc).equiv(Operator(qc_sqrt))
