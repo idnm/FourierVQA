@@ -163,6 +163,8 @@ def test_fix_parameters():
     qc_fix_direct = qc.bind_parameters({parameters[key]: value for key, value in parameter_dict.items()})
     qc_fix_clifford = qc.fix_parameters(parameter_dict)
 
+    assert qc_fix_direct.num_parameters == num_parameters - 3
+    assert qc_fix_clifford.num_parameters == num_parameters - 3
     assert parametric_circuits_are_equivalent(qc_fix_direct, qc_fix_clifford)
 
 

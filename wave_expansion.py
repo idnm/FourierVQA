@@ -22,17 +22,24 @@ class CliffordPhiVQA:
         if len(self.fourier_modes) < order:
             self.compute_fourier_mode(order-1)
 
+        # Order zero is simply a constant
+        if order == 0:
+            return FourierMode({(): self.circuit.average(self.loss)})
+
+        # Each parameter configuration like (0, 2, 5) corresponds to a trigonometric polynomial.
+        # We iterate over all parameter configurations and find the corresponding polynomials via their coefficients.
         poly_dict = {}
         for parameter_configuration in self.parameter_configurations(self.circuit.num_parameters, order):
 
-            def pcircuit(p):
-                parameter_dict = dict(zip(parameter_configuration, p))
+            def pcircuit(fixed_parameter_values):
+                parameter_dict = dict(zip(parameter_configuration, fixed_parameter_values))
                 return self.circuit.fix_parameters(parameter_dict)
 
-            def centered_average(p):
-                average = pcircuit(p).average(self.loss)
-                shift = sum([fourier_mode.evaluate_at(p) for fourier_mode in self.fourier_modes[:order]])
+            def centered_average(fixed_parameter_values):
+                average = pcircuit(fixed_parameter_values).average(self.loss)
+                shift = sum([fourier_mode.evaluate_at(fixed_parameter_values) for fourier_mode in self.fourier_modes[:order]])
                 return average - shift
+
             poly_dict[parameter_configuration] = TrigonometricPolynomial.from_function(centered_average, self.circuit.num_parameters)
 
         fourier_mode = FourierMode(poly_dict)
@@ -50,8 +57,11 @@ class FourierMode:
         self.poly_dict = poly_dict
 
     def evaluate_at(self, parameters):
+        if () in self.poly_dict.keys():
+            return self.poly_dict[()]
+
         parameters = np.array(parameters)
-        return sum([polynomial.evaluate_at(parameters[configuration]) for configuration, polynomial in self.poly_dict.items()])
+        return sum([polynomial.evaluate_at(parameters[np.array(configuration)]) for configuration, polynomial in self.poly_dict.items()])
 
 
 class TrigonometricPolynomial:
