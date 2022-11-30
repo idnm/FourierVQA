@@ -1,3 +1,4 @@
+import copy
 from itertools import product, combinations
 
 import numpy as np
@@ -8,10 +9,13 @@ from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Statevector, D
 
 
 class CliffordPhiVQA:
-    def __int__(self, circuit, loss):
+    def __init__(self, circuit, loss):
         self.circuit = circuit
         self.loss = loss
         self.fourier_modes = []
+
+    def evaluate_loss_at(self, parameters):
+        return self.circuit.evaluate_loss_at(self.loss, parameters)
 
     def compute_fourier_mode(self, order):
         # Compute previous Fourier modes if necessary
@@ -19,7 +23,7 @@ class CliffordPhiVQA:
             self.compute_fourier_mode(order-1)
 
         poly_dict = {}
-        for parameter_configuration in self.parameter_configurations(order):
+        for parameter_configuration in self.parameter_configurations(self.circuit.num_parameters, order):
 
             def pcircuit(p):
                 parameter_dict = dict(zip(parameter_configuration, p))
@@ -29,10 +33,10 @@ class CliffordPhiVQA:
                 average = pcircuit(p).average(self.loss)
                 shift = sum([fourier_mode.evaluate_at(p) for fourier_mode in self.fourier_modes[:order]])
                 return average - shift
-            poly_dict[parameter_configuration] = TrigonometricPolynomial.from_function(centered_average)
+            poly_dict[parameter_configuration] = TrigonometricPolynomial.from_function(centered_average, self.circuit.num_parameters)
 
         fourier_mode = FourierMode(poly_dict)
-        self.fourier_modes.append[fourier_mode]
+        self.fourier_modes.append(fourier_mode)
 
         return fourier_mode
 
@@ -42,7 +46,7 @@ class CliffordPhiVQA:
 
 
 class FourierMode:
-    def __int__(self, poly_dict):
+    def __init__(self, poly_dict):
         self.poly_dict = poly_dict
 
     def evaluate_at(self, parameters):
@@ -128,16 +132,16 @@ class CliffordPhi(QuantumCircuit):
         clifford_gates, parametric_gates  = self.gates()
         return parametric_gates
 
+    def evaluate_loss_at(self, loss, parameters):
+        qc = self.bind_parameters(parameters)
+        state = Statevector(qc)
+        pauli_losses = [c * state.expectation_value(p) for c, p in zip(loss.coefficients, loss.paulis)]
+        return sum(pauli_losses)
+
     def empiric_average(self, loss, batch_size=100):
         parameters_batch = 2*np.pi*np.random.rand(batch_size, self.num_parameters)
-        total_loss = 0
-        for parameters in parameters_batch:
-            qc = self.bind_parameters(parameters)
-            state = Statevector(qc)
-            losses = [c*state.expectation_value(p) for c, p in zip(loss.coefficients, loss.paulis)]
-            total_loss += sum(losses)
-
-        return total_loss/batch_size
+        losses = [self.evaluate_loss_at(loss, p) for p in parameters_batch]
+        return sum(losses)/batch_size
 
     def lattice_average(self, loss):
         """Compute loss average by summing over all lattice points."""
@@ -210,11 +214,15 @@ class CliffordPhi(QuantumCircuit):
 
     def fix_parameters(self, parameter_dict):
 
-        qc = self.copy()
-        parametric_instructions = [instruction for instruction in qc.data if instruction.operation.is_parameterized()]
+        data = copy.deepcopy(self.data)
+
+        parametric_instructions = [instruction for instruction in data if instruction.operation.is_parameterized()]
         for parameter_index, parameter_value in parameter_dict.items():
-            gate = parametric_instructions[parameter_index].operation
-            gate = PauliRotation.fix_parameter(gate, parameter_value)
+            gate, qargs, cargs = parametric_instructions[parameter_index]
+            parametric_instructions[parameter_index].operation = PauliRotation.fix_parameter(gate, parameter_value)
+
+        qc = CliffordPhi(self.num_qubits)
+        qc.data = data
 
         return qc
 
@@ -245,21 +253,13 @@ class PauliRotation:
     def fix_parameter(gate, parameter_value):
         num_qubits = gate.num_qubits
         if np.allclose(parameter_value, 0):
-            gate = IGate()
-            gate.num_qubits = num_qubits
+            gate = QuantumCircuit(num_qubits).to_gate(label='I')
         elif np.allclose(parameter_value, np.pi/2):
             gate_pauli = PauliRotation.pauli_gates[gate.name][1]
             gate = PauliRotation.pauli_root(Pauli(gate_pauli))
+        else:
+            raise ValueError(f'Can only fix parameter to 0 or pi/2, got {parameter_value}.')
         return gate
-
-    # @staticmethod
-    # def pauli_root(pauli):
-    #     """Construct a Clifford gate implementing (1-iP)/sqrt(2)"""
-    #     qc = QuantumCircuit(pauli.num_qubits)
-    #     for qubit, label in enumerate(pauli.to_label()):
-    #         print(f'appendig root of {Pauli(label)}')
-    #         qc.append(PauliRotation.pauli_root_single(Pauli(label)), [qubit])
-    #     return qc.reverse_bits()
 
     @staticmethod
     def pauli_root(pauli):
@@ -277,24 +277,6 @@ class PauliRotation:
 
         cliff = Clifford.from_dict({'stabilizer': stabilizers, 'destabilizer': destabilizers})
         return cliff.to_circuit()
-
-    @staticmethod
-    def pauli_root_single(pauli):
-        qc = QuantumCircuit(1)
-        label = pauli.to_label()
-        if label == 'Z':
-            qc.s(0)
-        elif label == 'X':
-            qc.h(0)
-            qc.s(0)
-            qc.h(0)
-        elif label == 'Y':
-            qc.sdg(0)
-            qc.h(0)
-            qc.s(0)
-            qc.h(0)
-            qc.s(0)
-        return Clifford(qc).to_circuit()
 
 
 class Loss:

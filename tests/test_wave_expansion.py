@@ -5,7 +5,7 @@ from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
 from qiskit.quantum_info import random_clifford, Operator, random_statevector, Pauli
 
-from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial
+from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial, CliffordPhiVQA
 
 
 def random_clifford_phi(num_qubits, num_parameters, seed=0):
@@ -142,3 +142,37 @@ def test_pauli_root():
         qc_sqrt.append(PauliRotation.pauli_root(pauli), range(num_qubits))
 
         assert Operator(qc).equiv(Operator(qc_sqrt))
+
+
+def parametric_circuits_are_equivalent(qc0, qc1):
+
+    np.random.seed(42)
+    random_parameters = np.random.rand(10, qc0.num_parameters)
+    return all([Operator(qc0.bind_parameters(p)).equiv(Operator(qc1.bind_parameters(p))) for p in random_parameters])
+
+
+def test_fix_parameters():
+
+    num_qubits = 4
+    num_parameters = 6
+    qc = random_clifford_phi(num_qubits, num_parameters)
+    parameters = qc.parameters
+
+    parameter_dict = {1: 0, 3: np.pi/2, 5: np.pi/2}
+
+    qc_fix_direct = qc.bind_parameters({parameters[key]: value for key, value in parameter_dict.items()})
+    qc_fix_clifford = qc.fix_parameters(parameter_dict)
+
+    assert parametric_circuits_are_equivalent(qc_fix_direct, qc_fix_clifford)
+
+
+def test_first_fourier():
+    num_qubits = 2
+    num_parameters = 1
+
+    qc = random_clifford_phi(num_qubits, num_parameters)
+    loss = Loss.from_state(random_statevector(2 ** num_qubits, seed=0))
+    vqa = CliffordPhiVQA(qc, loss)
+    vqa.compute_fourier_mode(1)
+
+    vqa.evaluate_loss_at([1.])
