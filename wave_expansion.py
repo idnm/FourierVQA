@@ -24,7 +24,7 @@ class CliffordPhiVQA:
 
         # Order zero is simply a constant
         if order == 0:
-            tp = TrigonometricPolynomial.from_function(lambda _ :self.circuit.average(self.loss), 0)
+            tp = TrigonometricPolynomial.from_function(lambda _: self.circuit.average(self.loss), 0)
             fourier_mode = FourierMode({(): tp})
             self.fourier_modes.append(fourier_mode)
             return fourier_mode
@@ -54,6 +54,18 @@ class CliffordPhiVQA:
     @staticmethod
     def parameter_configurations(num_parameters, order):
         return combinations(range(num_parameters), order)
+
+    def fourier_expansion(self, up_to_order=None):
+        if up_to_order is None:
+            up_to_order = self.circuit.num_parameters
+
+        if len(self.fourier_modes) <= up_to_order:
+            self.compute_fourier_mode(up_to_order)
+
+        def f(parameters):
+            return sum(fourier_mode.evaluate_at(parameters) for fourier_mode in self.fourier_modes[:up_to_order+1])
+
+        return f
 
 
 class FourierMode:

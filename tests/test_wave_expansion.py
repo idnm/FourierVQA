@@ -79,11 +79,11 @@ def test_loss_from_state():
     assert np.allclose(rho_matrix, loss.matrix())
 
 
-def test_average():
+def test_average(max_num_qubits=2, max_num_parameters=3):
     """Test computing the average of a Pauli operator over a density matrix."""
 
-    for num_qubits in range(2, 3):
-        for num_parameters in range(4):
+    for num_qubits in range(2, max_num_qubits+1):
+        for num_parameters in range(max_num_parameters+1):
             qc = random_clifford_phi(num_qubits, num_parameters, seed=41)
             state = random_statevector(2 ** num_qubits, seed=42)
 
@@ -151,10 +151,8 @@ def parametric_circuits_are_equivalent(qc0, qc1):
     return all([Operator(qc0.bind_parameters(p)).equiv(Operator(qc1.bind_parameters(p))) for p in random_parameters])
 
 
-def test_fix_parameters():
+def test_fix_parameters(num_qubits=4, num_parameters=6):
 
-    num_qubits = 4
-    num_parameters = 6
     qc = random_clifford_phi(num_qubits, num_parameters)
     parameters = qc.parameters
 
@@ -198,3 +196,18 @@ def test_first_fourier():
     vqa.compute_fourier_mode(1)
 
     vqa.evaluate_loss_at([1.])
+
+
+def test_full_fourier_reconstruction(max_num_qubits=4, max_num_parameters=3):
+    for num_qubits in range(2, max_num_qubits+1):
+        for num_parameters in range(max_num_parameters+1):
+            qc = random_clifford_phi(num_qubits, num_parameters)
+            loss = Loss.from_state(random_statevector(2**num_qubits, seed=num_qubits*num_parameters))
+            vqa = CliffordPhiVQA(qc, loss)
+
+            loss_from_fourier = vqa.fourier_expansion()
+
+            random_parameters = 2*np.pi*np.random.rand(10, num_parameters)
+
+            assert all([np.allclose(vqa.evaluate_loss_at(p), loss_from_fourier(p)) for p in random_parameters])
+
