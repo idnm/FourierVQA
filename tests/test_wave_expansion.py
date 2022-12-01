@@ -207,6 +207,7 @@ def test_full_fourier_reconstruction(max_num_qubits=4, max_num_parameters=3):
 
             loss_from_fourier = vqa.fourier_expansion()
 
+
             random_parameters = 2*np.pi*np.random.rand(10, num_parameters)
 
             assert all([np.allclose(vqa.evaluate_loss_at(p), loss_from_fourier(p)) for p in random_parameters])

@@ -160,7 +160,7 @@ class CliffordPhi(QuantumCircuit):
 
     def parametric_gates(self):
         """Parametric gates in the circuit."""
-        clifford_gates, parametric_gates  = self.gates()
+        clifford_gates, parametric_gates = self.gates()
         return parametric_gates
 
     def evaluate_loss_at(self, loss, parameters):
