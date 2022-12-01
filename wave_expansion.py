@@ -24,7 +24,10 @@ class CliffordPhiVQA:
 
         # Order zero is simply a constant
         if order == 0:
-            return FourierMode({(): self.circuit.average(self.loss)})
+            tp = TrigonometricPolynomial.from_function(lambda _ :self.circuit.average(self.loss), 0)
+            fourier_mode = FourierMode({(): tp})
+            self.fourier_modes.append(fourier_mode)
+            return fourier_mode
 
         # Each parameter configuration like (0, 2, 5) corresponds to a trigonometric polynomial.
         # We iterate over all parameter configurations and find the corresponding polynomials via their coefficients.
@@ -32,15 +35,16 @@ class CliffordPhiVQA:
         for parameter_configuration in self.parameter_configurations(self.circuit.num_parameters, order):
 
             def pcircuit(fixed_parameter_values):
-                parameter_dict = dict(zip(parameter_configuration, fixed_parameter_values))
-                return self.circuit.fix_parameters(parameter_dict)
+                fixed_parameters_dict = dict(zip(parameter_configuration, fixed_parameter_values))
+                return self.circuit.fix_parameters(fixed_parameters_dict)
 
             def centered_average(fixed_parameter_values):
+                fixed_parameters_dict = dict(zip(parameter_configuration, fixed_parameter_values))
                 average = pcircuit(fixed_parameter_values).average(self.loss)
-                shift = sum([fourier_mode.evaluate_at(fixed_parameter_values) for fourier_mode in self.fourier_modes[:order]])
+                shift = sum([fourier_mode.average(fixed_parameters_dict) for fourier_mode in self.fourier_modes[:order]])
                 return average - shift
 
-            poly_dict[parameter_configuration] = TrigonometricPolynomial.from_function(centered_average, self.circuit.num_parameters)
+            poly_dict[parameter_configuration] = TrigonometricPolynomial.from_function(centered_average, order)
 
         fourier_mode = FourierMode(poly_dict)
         self.fourier_modes.append(fourier_mode)
@@ -56,12 +60,17 @@ class FourierMode:
     def __init__(self, poly_dict):
         self.poly_dict = poly_dict
 
-    def evaluate_at(self, parameters):
-        if () in self.poly_dict.keys():
-            return self.poly_dict[()]
+    def average(self, fixed_parameters_dict):
+        total = 0
+        for parameter_configuration, polynomial in self.poly_dict.items():
+            if all([p in fixed_parameters_dict.keys() for p in parameter_configuration]):
+                parameters = np.array([fixed_parameters_dict[p] for p in parameter_configuration])
+                total += polynomial.evaluate_at(parameters)
 
-        parameters = np.array(parameters)
-        return sum([polynomial.evaluate_at(parameters[np.array(configuration)]) for configuration, polynomial in self.poly_dict.items()])
+        return total
+
+    def evaluate_at(self, parameters):
+        return self.average({i: p for i, p in enumerate(parameters)})
 
 
 class TrigonometricPolynomial:

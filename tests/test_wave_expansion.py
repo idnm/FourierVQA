@@ -5,7 +5,7 @@ from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
 from qiskit.quantum_info import random_clifford, Operator, random_statevector, Pauli
 
-from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial, CliffordPhiVQA
+from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial, CliffordPhiVQA, FourierMode
 
 
 def random_clifford_phi(num_qubits, num_parameters, seed=0):
@@ -166,6 +166,26 @@ def test_fix_parameters():
     assert qc_fix_direct.num_parameters == num_parameters - 3
     assert qc_fix_clifford.num_parameters == num_parameters - 3
     assert parametric_circuits_are_equivalent(qc_fix_direct, qc_fix_clifford)
+
+
+def test_fourier_mode_evaluation():
+    def poly1(x):
+        return np.cos(x[0]) * np.sin(x[1]) - np.sin(x[0]) * np.cos(x[1])
+
+    def poly2(x):
+        return 0.5 * np.sin(x[0]) * np.sin(x[1]) + 10 * np.sin(x[0]) * np.cos(x[1])
+
+    def poly3(x):
+        return -5 ** np.sin(x[0]) * np.cos(x[1])
+
+    tp1, tp2, tp3 = [TrigonometricPolynomial.from_function(p, 2) for p in [poly1, poly2, poly3]]
+    poly_dict = {(0, 1): tp1, (0, 2): tp2, (1, 2): tp3}
+    fmode2 = FourierMode(poly_dict)
+
+    x = np.array([1., 2., 3.])
+    val = tp1.evaluate_at(x[[0, 1]]) + tp2.evaluate_at(x[[0, 2]]) + tp3.evaluate_at(x[[1, 2]])
+    assert np.allclose(val, fmode2.evaluate_at(x))
+    assert np.allclose(fmode2.average({1: 3., 2: 4.}), tp3.evaluate_at([3., 4.]))
 
 
 def test_first_fourier():
