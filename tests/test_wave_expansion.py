@@ -3,6 +3,7 @@ import random
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
+from qiskit.circuit.library import RXGate, RYGate, RZGate, RZZGate, RXXGate, RZXGate
 from qiskit.quantum_info import random_clifford, Operator, random_statevector, Pauli
 
 from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial, CliffordPhiVQA, FourierMode
@@ -16,7 +17,7 @@ def random_clifford_phi(num_qubits, num_parameters, seed=0):
         clifford_gate = random_clifford(num_qubits, seed=seed+i)
         qc.append(clifford_gate.to_instruction(), range(num_qubits))
 
-        parametric_gate = random.choice(list(PauliRotation.pauli_gates.values()))[0]
+        parametric_gate = random.choice([RXGate, RZGate, RYGate, RZZGate])
         parameter = Parameter(f'θ_{i}')
         position = random.sample(range(num_qubits), parametric_gate(0).num_qubits)
 
@@ -28,18 +29,13 @@ def random_clifford_phi(num_qubits, num_parameters, seed=0):
 def reconstruct_circuit(qc0):
     """Reconstruct the full circuit from clifford and parametric gates"""
     num_qubits = qc0.num_qubits
-    clifford_gates, parametric_gates = qc0.gates()
 
     qc = QuantumCircuit(num_qubits)
-    for i, clifford_gate in enumerate(clifford_gates):
-        while parametric_gates and parametric_gates[0].after_clifford_num == i-1:
-            parametric_gate = parametric_gates.pop(0)
-            qc.append(parametric_gate.gate, parametric_gate.qubit_indices)
-        qc.append(clifford_gate, range(num_qubits))
-
-    # Remaining parametric gates.
-    for parametric_gate in parametric_gates:
-        qc.append(parametric_gate.gate, parametric_gate.qubit_indices)
+    for gate, qargs in qc0.clifford_pauli_data():
+        try:
+            qc.append(gate, qargs)  # Clifford gate
+        except TypeError:
+            qc.append(gate.gate, qargs)  # Pauli rotation gate
 
     return qc
 
@@ -52,7 +48,7 @@ def test_circuit_reconstruction(num_qubits=3, num_parameters=4, seed=0):
     random_parameters = np.random.rand(10, qc.num_parameters)
 
     checks = [Operator(qc0.bind_parameters(p)).equiv(Operator(qc.bind_parameters(p))) for p in random_parameters]
-    assert False not in checks
+    assert all(checks)
 
 
 def qc_for_generator_testing():
@@ -151,19 +147,20 @@ def parametric_circuits_are_equivalent(qc0, qc1):
     return all([Operator(qc0.bind_parameters(p)).equiv(Operator(qc1.bind_parameters(p))) for p in random_parameters])
 
 
-def test_fix_parameters(num_qubits=4, num_parameters=6):
+def test_fix_parameters(max_num_qubits=4, num_parameters=8):
 
-    qc = random_clifford_phi(num_qubits, num_parameters)
-    parameters = qc.parameters
+    for num_qubits in range(2, max_num_qubits+1):
+        qc = random_clifford_phi(num_qubits, num_parameters, seed=num_qubits*num_parameters)
+        parameters = qc.parameters
 
-    parameter_dict = {1: 0, 3: np.pi/2, 5: np.pi/2}
+        parameter_dict = {1: 0, 3: np.pi/2, 5: np.pi/2}
 
-    qc_fix_direct = qc.bind_parameters({parameters[key]: value for key, value in parameter_dict.items()})
-    qc_fix_clifford = qc.fix_parameters(parameter_dict)
+        qc_fix_direct = qc.bind_parameters({parameters[key]: value for key, value in parameter_dict.items()})
+        qc_fix_clifford = qc.fix_parameters(parameter_dict)
 
-    assert qc_fix_direct.num_parameters == num_parameters - 3
-    assert qc_fix_clifford.num_parameters == num_parameters - 3
-    assert parametric_circuits_are_equivalent(qc_fix_direct, qc_fix_clifford)
+        assert qc_fix_direct.num_parameters == num_parameters - 3
+        assert qc_fix_clifford.num_parameters == num_parameters - 3
+        assert parametric_circuits_are_equivalent(qc_fix_direct, qc_fix_clifford)
 
 
 def test_fourier_mode_evaluation():
@@ -198,7 +195,7 @@ def test_first_fourier():
     vqa.evaluate_loss_at([1.])
 
 
-def test_full_fourier_reconstruction(max_num_qubits=4, max_num_parameters=3):
+def test_full_fourier_reconstruction(max_num_qubits=3, max_num_parameters=4):
     for num_qubits in range(2, max_num_qubits+1):
         for num_parameters in range(max_num_parameters+1):
             qc = random_clifford_phi(num_qubits, num_parameters)
@@ -206,9 +203,17 @@ def test_full_fourier_reconstruction(max_num_qubits=4, max_num_parameters=3):
             vqa = CliffordPhiVQA(qc, loss)
 
             loss_from_fourier = vqa.fourier_expansion()
-
-
             random_parameters = 2*np.pi*np.random.rand(10, num_parameters)
 
             assert all([np.allclose(vqa.evaluate_loss_at(p), loss_from_fourier(p)) for p in random_parameters])
 
+
+def test_pauli_generator_from_gate():
+
+    assert PauliRotation.pauli_generator_from_gate(RXGate(Parameter('theta'))) == Pauli('X')
+    assert PauliRotation.pauli_generator_from_gate(RYGate(Parameter('theta'))) == Pauli('Y')
+    assert PauliRotation.pauli_generator_from_gate(RZGate(Parameter('theta'))) == Pauli('Z')
+    assert PauliRotation.pauli_generator_from_gate(RZZGate(Parameter('theta'))) == Pauli('ZZ')
+    assert PauliRotation.pauli_generator_from_gate(RXXGate(Parameter('theta'))) == Pauli('XX')
+    # Note the reverse order!
+    assert PauliRotation.pauli_generator_from_gate(RZXGate(Parameter('theta'))) == Pauli('XZ')
