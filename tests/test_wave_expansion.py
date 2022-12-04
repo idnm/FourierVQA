@@ -31,7 +31,7 @@ def reconstruct_circuit(qc0):
     num_qubits = qc0.num_qubits
 
     qc = QuantumCircuit(num_qubits)
-    for gate, qargs in qc0.clifford_pauli_data():
+    for gate, qargs in qc0.clifford_pauli_data:
         try:
             qc.append(gate, qargs)  # Clifford gate
         except TypeError:

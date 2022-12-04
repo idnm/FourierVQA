@@ -119,13 +119,7 @@ class CliffordPhi(QuantumCircuit):
     def __init__(self, n):
         super().__init__(n)
 
-    @staticmethod
-    def from_quantum_circuit(circuit):
-        """Construct a CliffordPhi from a quantum circuit."""
-        qc = CliffordPhi(circuit.num_qubits)
-        qc.data = circuit.data
-        return qc
-
+    @property
     def clifford_pauli_data(self):
         data = []
 
@@ -154,23 +148,14 @@ class CliffordPhi(QuantumCircuit):
             instruction = [last_clifford.to_instruction(), range(self.num_qubits)]
             data.append(instruction)
 
-            # except QiskitError:
-            #     # If the gate is not clifford, add the current accumulated clifford one to the list and start a new one.
-            #     if not current_clifford == trivial_clifford:
-            #         instruction = [current_clifford.to_instruction(), range(self.num_qubits)]
-            #         data.append(instruction)
-            #
-            #     current_clifford = Clifford(QuantumCircuit(self.num_qubits))
-            #
-            #     # If the gate is parametric try converting it to pauli rotation first.
-            #     if gate.is_parameterized():
-            #         pauli_rotation = PauliRotation(gate)
-            #         instruction = [pauli_rotation, qargs]
-            #         data.append(instruction)
-            #     else:
-            #         raise TypeError(f"Gate {gate} is neither Clifford nor parametric")
-
         return data
+
+    @staticmethod
+    def from_quantum_circuit(circuit):
+        """Construct a CliffordPhi from a quantum circuit."""
+        qc = CliffordPhi(circuit.num_qubits)
+        qc.data = circuit.data
+        return qc
 
     @staticmethod
     def clifford_gates(data):
@@ -237,16 +222,17 @@ class CliffordPhi(QuantumCircuit):
         bare_average = state.expectation_value(pauli)
         assert bare_average in [-1, 0, 1], f"Average of {pauli} is {bare_average}"
         if bare_average:
-            generators = self.commuted_generators()
+            generators = self.commuted_generators
             all_commute = self.all_commute(generators, pauli)
             if all_commute:
                 return bare_average
 
         return 0
 
+    @property
     def commuted_generators(self):
         """Generators of the parametric gates commuted to the end of the circuit"""
-        clifford_pauli_gates = self.clifford_pauli_data()
+        clifford_pauli_gates = self.clifford_pauli_data
         generators = []
         for i, (gate, qargs) in enumerate(clifford_pauli_gates):
             if self.is_clifford(gate):
@@ -271,7 +257,7 @@ class CliffordPhi(QuantumCircuit):
         if state is None:
             state = StabilizerState(QuantumCircuit(self.num_qubits))
 
-        for gate, qargs in self.clifford_gates(self.clifford_pauli_data()):
+        for gate, qargs in self.clifford_gates(self.clifford_pauli_data):
             state = state.evolve(gate)
 
         return state
@@ -314,7 +300,7 @@ class PauliRotation:
 
         # Check that gate(x) is exponential of the pauli gate for other parameters.
         # This will fail e.g. for exp(i x (Z1+Z2)).
-        xx = np.linspace(0, 2*np.pi, 10)
+        xx = np.linspace(0, 2*np.pi, 19)
         gate_values = np.array([Operator(qc.bind_parameters([x])).data for x in xx])
         pauli_rotation_values = np.array([PauliRotation.matrix(pauli, x) for x in xx])
 
@@ -322,7 +308,6 @@ class PauliRotation:
             return None
 
         return pauli
-        # return Pauli(pauli.to_label()[::-1])
 
     def full_pauli_generator(self, qargs):
         qubit_indices = [q._index for q in qargs]
@@ -378,6 +363,7 @@ class PauliRotation:
 
 class Loss:
     def __init__(self, coefficients, paulis):
+
         self.coefficients = coefficients
         self.paulis = paulis
 
