@@ -6,7 +6,7 @@ from qiskit.circuit import Parameter
 from qiskit.circuit.library import RXGate, RYGate, RZGate, RZZGate, RXXGate, RZXGate
 from qiskit.quantum_info import random_clifford, Operator, random_statevector, Pauli
 
-from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial, CliffordPhiVQA, FourierMode
+from wave_expansion import CliffordPhi, PauliRotation, LossHamiltonian, TrigonometricPolynomial, CliffordPhiVQA, FourierMode
 
 
 def random_clifford_phi(num_qubits, num_parameters, seed=0):
@@ -69,7 +69,7 @@ def qc_for_generator_testing():
 def test_loss_from_state():
     """Test reconstructing density matrix from the loss function."""
     state = random_statevector(2**4, seed=0)
-    loss = Loss.from_state(state)
+    loss = LossHamiltonian.from_state(state)
     rho_matrix = np.outer(state.data, state.data.conj().T)
 
     assert np.allclose(rho_matrix, loss.matrix())
@@ -83,7 +83,7 @@ def test_average(max_num_qubits=2, max_num_parameters=3):
             qc = random_clifford_phi(num_qubits, num_parameters, seed=41)
             state = random_statevector(2 ** num_qubits, seed=42)
 
-            loss = Loss.from_state(state)
+            loss = LossHamiltonian.from_state(state)
 
             assert np.allclose(qc.lattice_average(loss), qc.average(loss))
 
@@ -135,7 +135,7 @@ def test_pauli_root():
 
         # Use clifford square root
         qc_sqrt = QuantumCircuit(num_qubits)
-        qc_sqrt.append(PauliRotation.pauli_root(pauli), range(num_qubits))
+        qc_sqrt.append(PauliRotation.pauli_root_from_pauli(pauli), range(num_qubits))
 
         assert Operator(qc).equiv(Operator(qc_sqrt))
 
@@ -188,18 +188,18 @@ def test_first_fourier():
     num_parameters = 1
 
     qc = random_clifford_phi(num_qubits, num_parameters)
-    loss = Loss.from_state(random_statevector(2 ** num_qubits, seed=0))
+    loss = LossHamiltonian.from_state(random_statevector(2 ** num_qubits, seed=0))
     vqa = CliffordPhiVQA(qc, loss)
     vqa.compute_fourier_mode(1)
 
     vqa.evaluate_loss_at([1.])
 
 
-def test_full_fourier_reconstruction(max_num_qubits=3, max_num_parameters=4):
+def test_full_fourier_reconstruction(max_num_qubits=3, max_num_parameters=3):
     for num_qubits in range(2, max_num_qubits+1):
         for num_parameters in range(max_num_parameters+1):
             qc = random_clifford_phi(num_qubits, num_parameters)
-            loss = Loss.from_state(random_statevector(2**num_qubits, seed=num_qubits*num_parameters))
+            loss = LossHamiltonian.from_state(random_statevector(2 ** num_qubits, seed=num_qubits * num_parameters))
             vqa = CliffordPhiVQA(qc, loss)
 
             loss_from_fourier = vqa.fourier_expansion()

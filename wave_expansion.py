@@ -116,8 +116,9 @@ class TrigonometricPolynomial:
 
 class CliffordPhi(QuantumCircuit):
 
-    def __init__(self, n):
+    def __init__(self, n, parametric_gates_to_pauli_gates_dict={}):
         super().__init__(n)
+        self.parametric_gates_to_pauli_gates_dict = parametric_gates_to_pauli_gates_dict
 
     @property
     def clifford_pauli_data(self):
@@ -137,7 +138,13 @@ class CliffordPhi(QuantumCircuit):
                     data.append(instruction)
                     current_clifford = trivial_clifford
 
-                pauli_rotation = PauliRotation(gate)
+                if gate.name not in self.parametric_gates_to_pauli_gates_dict:
+                    new_pauli_rotation_gate = PauliRotation(gate)
+                    pauli = new_pauli_rotation_gate.pauli
+                    pauli_root = new_pauli_rotation_gate.pauli_root
+                    self.parametric_gates_to_pauli_gates_dict[gate.name] = (pauli, pauli_root)
+
+                pauli_rotation = PauliRotation(gate, self.parametric_gates_to_pauli_gates_dict)
                 instruction = [pauli_rotation, qargs]
                 data.append(instruction)
             else:
@@ -161,6 +168,11 @@ class CliffordPhi(QuantumCircuit):
     def clifford_gates(data):
         """Clifford gates in the circuit."""
         return [(gate, qargs) for gate, qargs in data if CliffordPhi.is_clifford(gate)]
+
+    @staticmethod
+    def pauli_rotation_gates(data):
+        """Clifford gates in the circuit."""
+        return [(gate, qargs) for gate, qargs in data if CliffordPhi.is_pauli_rotation(gate)]
 
     @staticmethod
     def is_pauli_rotation(gate):
@@ -217,8 +229,7 @@ class CliffordPhi(QuantumCircuit):
 
     def average_pauli(self, pauli):
         """Compute the average of a Pauli Hamiltonian over all parameters in the circuit."""
-        state_0 = StabilizerState(QuantumCircuit(self.num_qubits))
-        state = self.evolve_state_using_all_clifford_gates(state_0)
+        state = self.stabilizer_state
         bare_average = state.expectation_value(pauli)
         assert bare_average in [-1, 0, 1], f"Average of {pauli} is {bare_average}"
         if bare_average:
@@ -228,6 +239,11 @@ class CliffordPhi(QuantumCircuit):
                 return bare_average
 
         return 0
+
+    @property
+    def stabilizer_state(self):
+        state_0 = StabilizerState(QuantumCircuit(self.num_qubits))
+        return self.evolve_state_using_all_clifford_gates(state_0)
 
     @property
     def commuted_generators(self):
@@ -267,9 +283,10 @@ class CliffordPhi(QuantumCircuit):
         data = copy.deepcopy(self.data)
 
         parametric_instructions = [instruction for instruction in data if instruction.operation.is_parameterized()]
+        pauli_rotations = self.pauli_rotation_gates(self.clifford_pauli_data)
         for parameter_index, parameter_value in parameter_dict.items():
             gate, qargs, cargs = parametric_instructions[parameter_index]
-            parametric_instructions[parameter_index].operation = PauliRotation.fix_parameter(gate, parameter_value)
+            parametric_instructions[parameter_index].operation = pauli_rotations[parameter_index][0].fix_parameter(parameter_value)
 
         qc = CliffordPhi(self.num_qubits)
         qc.data = data
@@ -279,9 +296,14 @@ class CliffordPhi(QuantumCircuit):
 
 class PauliRotation:
 
-    def __init__(self, gate):
+    def __init__(self, gate, rotation_gates_dict={}):
         self.gate = gate
-        self.pauli = PauliRotation.pauli_generator_from_gate(gate)
+        if gate.name in rotation_gates_dict:
+            self.pauli = rotation_gates_dict[gate.name][0]
+            self.pauli_root = rotation_gates_dict[gate.name][1]
+        else:
+            self.pauli = PauliRotation.pauli_generator_from_gate(gate)
+            self.pauli_root = PauliRotation.pauli_root_from_pauli(self.pauli)
 
     @staticmethod
     def pauli_generator_from_gate(gate):
@@ -324,20 +346,20 @@ class PauliRotation:
     def matrix(pauli, x):
         return np.cos(x/2)*np.eye(2**pauli.num_qubits)-1j*pauli.to_matrix()*np.sin(x/2)
 
-    @staticmethod
-    def fix_parameter(gate, parameter_value):
-        num_qubits = gate.num_qubits
+    def fix_parameter(self, parameter_value):
+        # num_qubits = gate.num_qubits
         if np.allclose(parameter_value, 0):
-            gate = QuantumCircuit(num_qubits).to_gate(label='I')
+            gate = QuantumCircuit(self.gate.num_qubits).to_gate(label='I')
         elif np.allclose(parameter_value, np.pi/2):
-            gate_pauli = PauliRotation.pauli_generator_from_gate(gate)
-            gate = PauliRotation.pauli_root(Pauli(gate_pauli))
+            # gate_pauli = PauliRotation.pauli_generator_from_gate(gate)
+            # gate = PauliRotation.pauli_root(Pauli(gate_pauli))
+            gate = self.pauli_root
         else:
             raise ValueError(f'Can only fix parameter to 0 or pi/2, got {parameter_value}.')
         return gate
 
     @staticmethod
-    def pauli_root(pauli):
+    def pauli_root_from_pauli(pauli):
         """Construct a Clifford gate implementing (1-iP)/sqrt(2)"""
 
         num_qubits = pauli.num_qubits
@@ -361,7 +383,7 @@ class PauliRotation:
     #     return Pauli(''.join(labels))
 
 
-class Loss:
+class LossHamiltonian:
     def __init__(self, coefficients, paulis):
 
         self.coefficients = coefficients
@@ -372,7 +394,7 @@ class Loss:
         rho = DensityMatrix(state)
         pauli_list = SparsePauliOp.from_operator(rho)
 
-        return Loss(pauli_list.coeffs, pauli_list.paulis)
+        return LossHamiltonian(pauli_list.coeffs, pauli_list.paulis)
 
     def matrix(self):
         return sum(np.array([c * p.to_matrix() for c, p in zip(self.coefficients, self.paulis)]))
