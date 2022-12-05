@@ -12,15 +12,14 @@ def jax_tensor(qc: CliffordPhi, initial_state: Union[str, jnp.array] = '0'):
     num_qubits = qc.num_qubits
 
     if initial_state == '0':
-        initial_shape = (2**num_qubits, )
         initial_state = Statevector.from_label('0'*num_qubits).data
-        initial_state = initial_state.reshape([2]*num_qubits)
     elif initial_state == 'id':
-        initial_shape = (2**num_qubits, 2**num_qubits)
-        initial_state = jnp.identity(2**num_qubits)
-        initial_state = initial_state.reshape([2] * 2 * num_qubits)
+        initial_state = jnp.identity(2 ** num_qubits)
     else:
         initial_shape = initial_state.shape
+
+    initial_shape = initial_state.shape
+    initial_state = initial_state.reshape([2]*num_qubits+[-1])
 
     def tensor(parameters):
         permutation = qc.num_instruction_from_num_parameter
@@ -38,7 +37,7 @@ def jax_tensor(qc: CliffordPhi, initial_state: Union[str, jnp.array] = '0'):
                 i += 1
 
             unitary_tensor = unitary.reshape([2]*2*len(q_indices))
-            s = apply_gate_to_tensor(unitary_tensor, s, list(q_indices))
+            s = apply_gate_to_tensor(unitary_tensor, s, list(q_indices), num_qubits)
 
         return s.reshape(initial_shape)
 
@@ -78,18 +77,16 @@ def transposition(n_qubits, placement):
     return t
 
 
-def apply_gate_to_tensor(gate, tensor, placement):
+def apply_gate_to_tensor(gate, tensor, placement, num_qubits):
     """Append `gate` to `tensor` along legs specified by `placement`. Transpose the output axes properly."""
 
     gate_width = int(len(gate.shape) / 2)
-    tensor_width = int(len(tensor.shape) / 2)
 
     # contraction axes for `tensor` are input axes (=last half of all axes)
     gate_contraction_axes = list(range(gate_width, 2*gate_width))
 
     contraction = jnp.tensordot(gate, tensor, axes=[gate_contraction_axes, placement])
 
-    # input(=last half) indices are intact
-    t = transposition(tensor_width, placement) + list(range(tensor_width, 2*tensor_width))
+    trans = transposition(num_qubits, placement) + list(range(num_qubits, len(tensor.shape)))
 
-    return jnp.transpose(contraction, axes=t)
+    return jnp.transpose(contraction, axes=trans)
