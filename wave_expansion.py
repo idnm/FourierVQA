@@ -278,19 +278,30 @@ class CliffordPhi(QuantumCircuit):
         return state
 
     def fix_parameters(self, parameter_dict):
-
         data = copy.deepcopy(self.data)
 
         parametric_instructions = [instruction for instruction in data if instruction.operation.is_parameterized()]
         pauli_rotations = self.pauli_rotation_gates(self.clifford_pauli_data)
         for parameter_index, parameter_value in parameter_dict.items():
-            gate, qargs, cargs = parametric_instructions[parameter_index]
-            parametric_instructions[parameter_index].operation = pauli_rotations[parameter_index][0].fix_parameter(parameter_value)
+            # gate, qargs, cargs = parametric_instructions[parameter_index]
+            num_instruction = self.num_instruction_from_num_parameter[parameter_index]
+            parametric_instructions[num_instruction].operation = pauli_rotations[num_instruction][0].fix_parameter(parameter_value)
 
         qc = CliffordPhi(self.num_qubits)
         qc.data = data
 
         return qc
+
+    @property
+    def num_instruction_from_num_parameter(self):
+        parameters = self.parameters
+        parametric_instructions = [gate for gate, _, _ in self.data if gate.is_parameterized()]
+        instruction_parameters = [gate.params[0] for gate in parametric_instructions]
+
+        return [instruction_parameters.index(p) for p in parameters]
+
+
+
 
 
 class PauliRotation:

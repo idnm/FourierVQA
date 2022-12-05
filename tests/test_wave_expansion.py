@@ -147,7 +147,7 @@ def parametric_circuits_are_equivalent(qc0, qc1):
     return all([Operator(qc0.bind_parameters(p)).equiv(Operator(qc1.bind_parameters(p))) for p in random_parameters])
 
 
-def test_fix_parameters(max_num_qubits=2, num_parameters=8):
+def test_fix_parameters(max_num_qubits=4, num_parameters=12):
 
     for num_qubits in range(2, max_num_qubits+1):
         qc = random_clifford_phi(num_qubits, num_parameters, seed=num_qubits*num_parameters)

@@ -23,6 +23,10 @@ def jax_tensor(qc: CliffordPhi, initial_state: Union[str, jnp.array] = '0'):
         initial_shape = initial_state.shape
 
     def tensor(parameters):
+        permutation = qc.num_instruction_from_num_parameter
+        inverse_permutation = jnp.argsort(jnp.array(permutation))
+
+        parameters = jnp.array([parameters[i] for i in inverse_permutation])
         i = 0
         s = initial_state
         for gate, q_indices in qc.clifford_pauli_data:
@@ -30,8 +34,6 @@ def jax_tensor(qc: CliffordPhi, initial_state: Union[str, jnp.array] = '0'):
                 unitary = Clifford(gate).to_matrix()
             else:
                 unitary = jax_pauli_rotation(gate.pauli, parameters[i])
-                print('applied param', parameters[i])
-                print('to gate', gate.gate)
                 q_indices = reversed_indices(q_indices, num_qubits)  # Dirty solution, should be cleared up.
                 i += 1
 
