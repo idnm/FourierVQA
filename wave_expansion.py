@@ -152,7 +152,7 @@ class CliffordPhi(QuantumCircuit):
 
         last_clifford = current_clifford
         if not last_clifford == trivial_clifford:
-            instruction = [last_clifford.to_instruction(), range(self.num_qubits)]
+            instruction = [last_clifford, range(self.num_qubits)]
             data.append(instruction)
 
         return data
