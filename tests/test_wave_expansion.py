@@ -17,7 +17,7 @@ def random_clifford_phi(num_qubits, num_parameters, seed=0):
         clifford_gate = random_clifford(num_qubits, seed=seed+i)
         qc.append(clifford_gate.to_instruction(), range(num_qubits))
 
-        parametric_gate = random.choice([RXGate, RZGate, RYGate, RZZGate])
+        parametric_gate = random.choice([RXGate, RZGate, RYGate, RZZGate, RZXGate])
         parameter = Parameter(f'θ_{i}')
         position = random.sample(range(num_qubits), parametric_gate(0).num_qubits)
 
@@ -147,7 +147,7 @@ def parametric_circuits_are_equivalent(qc0, qc1):
     return all([Operator(qc0.bind_parameters(p)).equiv(Operator(qc1.bind_parameters(p))) for p in random_parameters])
 
 
-def test_fix_parameters(max_num_qubits=4, num_parameters=8):
+def test_fix_parameters(max_num_qubits=2, num_parameters=8):
 
     for num_qubits in range(2, max_num_qubits+1):
         qc = random_clifford_phi(num_qubits, num_parameters, seed=num_qubits*num_parameters)
@@ -195,6 +195,17 @@ def test_first_fourier():
     vqa.evaluate_loss_at([1.])
 
 
+def test_pauli_generator_from_gate():
+
+    assert PauliRotation.pauli_generator_from_gate(RXGate(Parameter('theta'))) == Pauli('X')
+    assert PauliRotation.pauli_generator_from_gate(RYGate(Parameter('theta'))) == Pauli('Y')
+    assert PauliRotation.pauli_generator_from_gate(RZGate(Parameter('theta'))) == Pauli('Z')
+    assert PauliRotation.pauli_generator_from_gate(RZZGate(Parameter('theta'))) == Pauli('ZZ')
+    assert PauliRotation.pauli_generator_from_gate(RXXGate(Parameter('theta'))) == Pauli('XX')
+    # Note the reverse order!
+    assert PauliRotation.pauli_generator_from_gate(RZXGate(Parameter('theta'))) == Pauli('XZ')
+
+
 def test_full_fourier_reconstruction(max_num_qubits=3, max_num_parameters=3):
     for num_qubits in range(2, max_num_qubits+1):
         for num_parameters in range(max_num_parameters+1):
@@ -206,14 +217,3 @@ def test_full_fourier_reconstruction(max_num_qubits=3, max_num_parameters=3):
             random_parameters = 2*np.pi*np.random.rand(10, num_parameters)
 
             assert all([np.allclose(vqa.evaluate_loss_at(p), loss_from_fourier(p)) for p in random_parameters])
-
-
-def test_pauli_generator_from_gate():
-
-    assert PauliRotation.pauli_generator_from_gate(RXGate(Parameter('theta'))) == Pauli('X')
-    assert PauliRotation.pauli_generator_from_gate(RYGate(Parameter('theta'))) == Pauli('Y')
-    assert PauliRotation.pauli_generator_from_gate(RZGate(Parameter('theta'))) == Pauli('Z')
-    assert PauliRotation.pauli_generator_from_gate(RZZGate(Parameter('theta'))) == Pauli('ZZ')
-    assert PauliRotation.pauli_generator_from_gate(RXXGate(Parameter('theta'))) == Pauli('XX')
-    # Note the reverse order!
-    assert PauliRotation.pauli_generator_from_gate(RZXGate(Parameter('theta'))) == Pauli('XZ')

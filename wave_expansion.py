@@ -127,11 +127,10 @@ class CliffordPhi(QuantumCircuit):
         trivial_clifford = Clifford(QuantumCircuit(self.num_qubits))
         current_clifford = trivial_clifford
         for gate, qargs, cargs in self.data:
+            q_indices = [q._index for q in qargs]
             if self.is_clifford(gate):
-            # try:
-                # If the gate is clifford extend the current one.
                 gate = Clifford(gate)
-                current_clifford = current_clifford.compose(gate, [q._index for q in qargs])
+                current_clifford = current_clifford.compose(gate, q_indices)
             elif gate.is_parameterized():
                 if not current_clifford == trivial_clifford:
                     instruction = [current_clifford.to_instruction(), range(self.num_qubits)]
@@ -145,7 +144,7 @@ class CliffordPhi(QuantumCircuit):
                     self.parametric_gates_to_pauli_gates_dict[gate.name] = (pauli, pauli_root)
 
                 pauli_rotation = PauliRotation(gate, self.parametric_gates_to_pauli_gates_dict)
-                instruction = [pauli_rotation, qargs]
+                instruction = [pauli_rotation, q_indices]
                 data.append(instruction)
             else:
                 raise TypeError(f"Gate {gate} is neither Clifford nor parametric")
@@ -250,10 +249,10 @@ class CliffordPhi(QuantumCircuit):
         """Generators of the parametric gates commuted to the end of the circuit"""
         clifford_pauli_gates = self.clifford_pauli_data
         generators = []
-        for i, (gate, qargs) in enumerate(clifford_pauli_gates):
+        for i, (gate, qubit_indices) in enumerate(clifford_pauli_gates):
             if self.is_clifford(gate):
                 continue
-            generator = gate.full_pauli_generator(qargs)
+            generator = gate.full_pauli_generator(qubit_indices, self.num_qubits)
             for clifford, _ in self.clifford_gates(clifford_pauli_gates[i:]):
                 generator = generator.evolve(clifford, frame='s')
             generators.append(generator)
@@ -331,9 +330,8 @@ class PauliRotation:
 
         return pauli
 
-    def full_pauli_generator(self, qargs):
-        qubit_indices = [q._index for q in qargs]
-        num_qubits = qargs[0]._register.size
+    def full_pauli_generator(self, qubit_indices, num_qubits):
+        # num_qubits = qargs[0]._register.size
         pauli = self.pauli
         short_generator = pauli.to_label()
         generator = ['I']*num_qubits
