@@ -230,7 +230,10 @@ class CliffordPhi(QuantumCircuit):
         """Compute the average of a Pauli Hamiltonian over all parameters in the circuit."""
         state = self.stabilizer_state
         bare_average = state.expectation_value(pauli)
+        assert np.allclose(np.imag(bare_average), 0), f"Average of {pauli} is not real {bare_average}"
         assert bare_average in [-1, 0, 1], f"Average of {pauli} is {bare_average}"
+        bare_average = np.real(bare_average)
+
         if bare_average:
             generators = self.commuted_generators
             all_commute = self.all_commute(generators, pauli)
@@ -299,9 +302,6 @@ class CliffordPhi(QuantumCircuit):
         instruction_parameters = [gate.params[0] for gate in parametric_instructions]
 
         return [instruction_parameters.index(p) for p in parameters]
-
-
-
 
 
 class PauliRotation:
@@ -402,8 +402,9 @@ class LossHamiltonian:
     def from_state(state):
         rho = DensityMatrix(state)
         pauli_list = SparsePauliOp.from_operator(rho)
+        assert np.allclose(np.imag(pauli_list.coeffs), 0), "Coefficients shouldn't be imaginary"
 
-        return LossHamiltonian(pauli_list.coeffs, pauli_list.paulis)
+        return LossHamiltonian(np.real(pauli_list.coeffs), pauli_list.paulis)
 
     def matrix(self):
         return sum(np.array([c * p.to_matrix() for c, p in zip(self.coefficients, self.paulis)]))

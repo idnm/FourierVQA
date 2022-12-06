@@ -17,7 +17,10 @@ def random_clifford_phi(num_qubits, num_parameters, seed=0):
         clifford_gate = random_clifford(num_qubits, seed=seed+i)
         qc.append(clifford_gate.to_instruction(), range(num_qubits))
 
-        parametric_gate = random.choice([RXGate, RZGate, RYGate, RZZGate, RZXGate])
+        if num_qubits == 1:
+            parametric_gate = random.choice([RXGate, RZGate, RYGate])
+        else:
+            parametric_gate = random.choice([RXGate, RZGate, RYGate, RZZGate, RZXGate])
         parameter = Parameter(f'θ_{i}')
         position = random.sample(range(num_qubits), parametric_gate(0).num_qubits)
 

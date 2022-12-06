@@ -1,9 +1,11 @@
+from functools import partial
 from typing import Union
 
+from jax import vmap
 from qiskit.quantum_info import Statevector, Pauli, Clifford
 import jax.numpy as jnp
 
-from wave_expansion import CliffordPhi
+from wave_expansion import CliffordPhi, TrigonometricPolynomial, CliffordPhiVQA
 
 
 def jax_tensor(qc: CliffordPhi, initial_state: Union[str, jnp.array] = '0'):
@@ -90,3 +92,50 @@ def apply_gate_to_tensor(gate, tensor, placement, num_qubits):
     trans = transposition(num_qubits, placement) + list(range(num_qubits, len(tensor.shape)))
 
     return jnp.transpose(contraction, axes=trans)
+
+
+def monomial(p, power):
+    return jnp.product(jnp.cos(p) ** (1 - power) * jnp.sin(p) ** power)
+
+
+def monomial_array(order, p):
+    return vmap(partial(monomial, p))(TrigonometricPolynomial.binary_grid(order))
+
+
+def all_monomial_arrays(all_p, order):
+    num_parameters = len(all_p)
+    parameter_configurations = CliffordPhiVQA.parameter_configurations(num_parameters, order)
+    parameter_tuples = all_p[jnp.array(list(parameter_configurations))]
+    return vmap(partial(monomial_array, order))(parameter_tuples)
+
+
+def jax_fourier_mode(fourier_mode):
+    order = len(list(fourier_mode.poly_dict.keys())[0])
+    if order == 0:
+        return lambda _: fourier_mode.poly_dict[()].evaluate_at([])  # At order=0 return constant function
+
+    num_parameters = max(max(fourier_mode.poly_dict.keys())) + 1
+    coefficients = jnp.array([fourier_mode.poly_dict[configuration].coefficients for configuration in
+                              CliffordPhiVQA.parameter_configurations(num_parameters, order)])
+
+    def f(p):
+        return (coefficients * all_monomial_arrays(p, order)).sum()
+
+    return f
+
+
+def jax_loss(qc, loss):
+    evolved_state = jax_tensor(qc, initial_state='0')
+    pauli_matrices = jnp.array([p.to_matrix() for p in loss.paulis])
+    coefficients = jnp.array(loss.coefficients)
+
+    def loss_single(parameters, pauli_matrix):
+        state = evolved_state(parameters)
+        return jnp.real(state.conj().T @ pauli_matrix @ state)
+
+    def loss_full(parameters):
+        pauli_losses = vmap(partial(loss_single, parameters))(pauli_matrices)
+        return (coefficients * pauli_losses).sum()
+
+    return loss_full
+

@@ -1,10 +1,13 @@
 import numpy as np
+import jax.numpy as jnp
+import jax
+from jax import vmap, jit
 from qiskit.circuit import Parameter
-from qiskit.quantum_info import Operator, Statevector, random_clifford
+from qiskit.quantum_info import Operator, Statevector, random_clifford, random_statevector
 
-from jax_utils import jax_tensor
+from jax_utils import jax_tensor, jax_fourier_mode, jax_loss
 from test_wave_expansion import random_clifford_phi
-from wave_expansion import CliffordPhi
+from wave_expansion import CliffordPhi, LossHamiltonian, CliffordPhiVQA
 
 
 def equal_up_to_global_phase(s0, s1):
@@ -38,5 +41,33 @@ def test_jax_unitary(max_num_qubits=3, max_num_parameters=5):
             jax_state = jax_tensor(qc, '0')(parameters)
 
             assert equal_up_to_global_phase(qiskit_state, jax_state)
+
+
+def test_jax_fourier_mode(num_qubits=2, num_parameters=4):
+    qc = random_clifford_phi(num_qubits, num_parameters)
+    loss = LossHamiltonian.from_state(random_statevector(2 ** num_qubits))
+
+    vqa = CliffordPhiVQA(qc, loss)
+    vqa.fourier_expansion()
+
+    np.random.seed(0)
+    for fmode in vqa.fourier_modes:
+        x = np.random.rand(qc.num_parameters)
+        assert np.allclose(fmode.evaluate_at(x), jax_fourier_mode(fmode)(x))
+
+
+def test_jax_loss(num_qubits=3, num_parameters=12):
+    qc = random_clifford_phi(num_qubits, num_parameters)
+    loss = LossHamiltonian.from_state(random_statevector(2 ** num_qubits))
+
+    vqa = CliffordPhiVQA(qc, loss)
+
+    key = jax.random.PRNGKey(0)
+    xx = jax.random.uniform(key, (100, qc.num_parameters))
+
+    direct_values = jnp.array([vqa.evaluate_loss_at(np.array(x)) for x in xx])
+    jax_values = vmap(jit(jax_loss(qc, loss)))(xx)
+
+    assert jnp.allclose(direct_values, jax_values)
 
 
