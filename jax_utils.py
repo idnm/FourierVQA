@@ -129,13 +129,16 @@ def jax_loss(qc, loss):
     pauli_matrices = jnp.array([p.to_matrix() for p in loss.paulis])
     coefficients = jnp.array(loss.coefficients)
 
-    def loss_single(parameters, pauli_matrix):
+    total_matrix = sum([c*p for c, p in zip(coefficients, pauli_matrices)])
+    # jnp.tensordot(coefficients, pauli_matrices, axes=[[0], [0]])
+
+    def loss_func(parameters):
         state = evolved_state(parameters)
-        return jnp.real(state.conj().T @ pauli_matrix @ state)
+        return jnp.real(state.conj().T @ total_matrix @ state)
 
-    def loss_full(parameters):
-        pauli_losses = vmap(partial(loss_single, parameters))(pauli_matrices)
-        return (coefficients * pauli_losses).sum()
+    # def loss_full(parameters):
+    #     pauli_losses = vmap(partial(loss_single, parameters))(pauli_matrices)
+    #     return (coefficients * pauli_losses).sum()
 
-    return loss_full
+    return loss_func
 
