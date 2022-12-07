@@ -83,12 +83,12 @@ def hilbert_schmidt_product(u, v):
     return np.abs((u.conj() * v).sum())**2/4**num_qubits
 
 
-def test_loss_from_unitary(num_qubits=3, num_parameters=6):
+def test_loss_from_unitary(num_qubits=2, num_parameters=6):
     """Test reconstructing Hilbert-Schmidt product from the loss."""
     u = random_unitary(2**num_qubits, seed=0)
     qc = random_clifford_phi(num_qubits, num_parameters, seed=0)
 
-    loss = Loss.from_unitary(u.data)
+    loss = Loss.from_unitary(u)
 
     np.random.seed(0)
     num_samples = 10
@@ -232,14 +232,18 @@ def test_pauli_generator_from_gate():
     assert PauliRotation.pauli_generator_from_gate(RZXGate(Parameter('theta'))) == Pauli('XZ')
 
 
-def test_full_fourier_reconstruction(max_num_qubits=3, max_num_parameters=3):
-    for num_qubits in range(2, max_num_qubits+1):
-        for num_parameters in range(max_num_parameters+1):
-            qc = random_clifford_phi(num_qubits, num_parameters)
-            loss = Loss.from_state(random_statevector(2 ** num_qubits, seed=num_qubits * num_parameters))
-            vqa = CliffordPhiVQA(qc, loss)
+def test_full_fourier_reconstruction(num_qubits=3, num_parameters=3):
+    np.random.seed(0)
+    h = np.random.rand(2 ** num_qubits, 2 ** num_qubits)
+    hamiltonian_loss = Loss.from_hamiltonian(h+h.conj().T)
+    state_loss = Loss.from_state(random_statevector(2 ** num_qubits, seed=0))
+    unitary_loss = Loss.from_unitary(random_unitary(2 ** num_qubits, seed=0))
 
-            loss_from_fourier = vqa.fourier_expansion()
-            random_parameters = 2*np.pi*np.random.rand(10, num_parameters)
+    for loss in [hamiltonian_loss, state_loss, unitary_loss]:
+        qc = random_clifford_phi(num_qubits, num_parameters)
+        vqa = CliffordPhiVQA(qc, loss)
 
-            assert all([np.allclose(vqa.evaluate_loss_at(p), loss_from_fourier(p)) for p in random_parameters])
+        loss_from_fourier = vqa.fourier_expansion()
+        random_parameters = 2*np.pi*np.random.rand(10, num_parameters)
+
+        assert all([np.allclose(vqa.evaluate_loss_at(p), loss_from_fourier(p)) for p in random_parameters])

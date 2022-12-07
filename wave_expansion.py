@@ -12,7 +12,7 @@ from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Statevector, D
 
 class CliffordPhiVQA:
     def __init__(self, circuit, loss):
-        self.circuit = circuit
+        self.circuit = loss.construct_circuit(circuit)
         self.loss = loss
         self.fourier_modes = []
 
@@ -116,8 +116,8 @@ class TrigonometricPolynomial:
 
 class CliffordPhi(QuantumCircuit):
 
-    def __init__(self, n, parametric_gates_to_pauli_gates_dict={}):
-        super().__init__(n)
+    def __init__(self, num_qubits, parametric_gates_to_pauli_gates_dict={}):
+        super().__init__(num_qubits)
         self.parametric_gates_to_pauli_gates_dict = parametric_gates_to_pauli_gates_dict
 
     @property
@@ -396,12 +396,12 @@ class Loss:
     """Loss function is always assumed to be of the form L=<0|U* H U|0>.
 
     However, for the unitary compilation problem U is a non-trivial function of the circuit."""
-    def __init__(self, circuit, hamiltonian):
+    def __init__(self, construct_circuit, hamiltonian):
         self.hamiltonian = hamiltonian
-        self.circuit = circuit
+        self.construct_circuit = construct_circuit
 
     def evaluate_at(self, qc):
-        full_qc = self.circuit(qc)
+        full_qc = self.construct_circuit(qc)
         return Statevector(full_qc).expectation_value(self.hamiltonian.to_operator())
 
     @staticmethod
@@ -418,16 +418,14 @@ class Loss:
 
     @staticmethod
     def from_unitary(u):
-        num_qubits = int(np.log2(u.shape[0]))
 
+        num_qubits = u.num_qubits
         def loss_circuit(qc):
-            assert qc.num_qubits == num_qubits, f'Number of qubits in the circuit {qc.num_qubits} does not match that in unitary {num_qubits}'
+            assert qc.num_qubits == u.num_qubits, f'Number of qubits in the circuit {qc.num_qubits} does not match that in unitary {num_qubits}'
             qc_extended = Loss.hilbert_schmidt_circuit(num_qubits)
-            qc_extended.append(qc, range(num_qubits))
-            return qc_extended
+            return qc_extended.compose(qc, range(num_qubits))
 
-        u_circuit = Loss.hilbert_schmidt_circuit(num_qubits)
-        u_circuit.append(Operator(u), range(num_qubits))
+        u_circuit = Loss.hilbert_schmidt_circuit(num_qubits).compose(u.to_instruction(), range(num_qubits))
         u_state = Statevector(u_circuit)
         u_rho = DensityMatrix(u_state)
         u_hamiltonian = SparsePauliOp.from_operator(u_rho)
@@ -436,7 +434,7 @@ class Loss:
 
     @staticmethod
     def hilbert_schmidt_circuit(num_qubits):
-        qc = QuantumCircuit(2*num_qubits)
+        qc = CliffordPhi(2*num_qubits)
         for i in range(num_qubits):
             qc.h(i)
         for i in range(num_qubits):
