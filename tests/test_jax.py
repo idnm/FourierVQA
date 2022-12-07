@@ -7,7 +7,7 @@ from qiskit.quantum_info import Operator, Statevector, random_clifford, random_s
 
 from jax_utils import jax_tensor, jax_fourier_mode, jax_loss
 from test_wave_expansion import random_clifford_phi
-from wave_expansion import CliffordPhi, LossHamiltonian, CliffordPhiVQA
+from wave_expansion import CliffordPhi, Loss, CliffordPhiVQA
 
 
 def equal_up_to_global_phase(s0, s1):
@@ -45,7 +45,7 @@ def test_jax_unitary(max_num_qubits=3, max_num_parameters=5):
 
 def test_jax_fourier_mode(num_qubits=2, num_parameters=4):
     qc = random_clifford_phi(num_qubits, num_parameters)
-    loss = LossHamiltonian.from_state(random_statevector(2 ** num_qubits))
+    loss = Loss.from_state(random_statevector(2 ** num_qubits))
 
     vqa = CliffordPhiVQA(qc, loss)
     vqa.fourier_expansion()
@@ -58,7 +58,7 @@ def test_jax_fourier_mode(num_qubits=2, num_parameters=4):
 
 def test_jax_loss(num_qubits=3, num_parameters=12):
     qc = random_clifford_phi(num_qubits, num_parameters)
-    loss = LossHamiltonian.from_state(random_statevector(2 ** num_qubits))
+    loss = Loss.from_state(random_statevector(2 ** num_qubits))
 
     vqa = CliffordPhiVQA(qc, loss)
 

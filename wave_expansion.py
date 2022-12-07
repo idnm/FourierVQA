@@ -17,7 +17,7 @@ class CliffordPhiVQA:
         self.fourier_modes = []
 
     def evaluate_loss_at(self, parameters):
-        return self.circuit.evaluate_loss_at(self.loss, parameters)
+        return self.circuit.evaluate_loss_at(self.loss.hamiltonian, parameters)
 
     def compute_fourier_mode(self, order):
         # Compute previous Fourier modes if necessary
@@ -26,7 +26,7 @@ class CliffordPhiVQA:
 
         # Order zero is simply a constant
         if order == 0:
-            tp = TrigonometricPolynomial.from_function(lambda _: self.circuit.average(self.loss), 0)
+            tp = TrigonometricPolynomial.from_function(lambda _: self.circuit.average(self.loss.hamiltonian), 0)
             fourier_mode = FourierMode({(): tp})
             self.fourier_modes.append(fourier_mode)
             return fourier_mode
@@ -42,7 +42,7 @@ class CliffordPhiVQA:
 
             def centered_average(fixed_parameter_values):
                 fixed_parameters_dict = dict(zip(parameter_configuration, fixed_parameter_values))
-                average = pcircuit(fixed_parameter_values).average(self.loss)
+                average = pcircuit(fixed_parameter_values).average(self.loss.hamiltonian)
                 shift = sum([fourier_mode.average(fixed_parameters_dict) for fourier_mode in self.fourier_modes[:order]])
                 return average - shift
 
@@ -190,18 +190,18 @@ class CliffordPhi(QuantumCircuit):
         """Parametric gates in the circuit."""
         return [gate for gate in gate_list if gate.operation.is_parametric()]
 
-    def evaluate_loss_at(self, loss, parameters):
+    def evaluate_loss_at(self, hamiltonian, parameters):
         qc = self.bind_parameters(parameters)
         state = Statevector(qc)
-        pauli_losses = [c * state.expectation_value(p) for c, p in zip(loss.coefficients, loss.paulis)]
+        pauli_losses = [c * state.expectation_value(p) for c, p in zip(hamiltonian.coeffs, hamiltonian.paulis)]
         return sum(pauli_losses)
 
-    def empiric_average(self, loss, batch_size=100):
+    def empiric_average(self, hamiltonian, batch_size=100):
         parameters_batch = 2*np.pi*np.random.rand(batch_size, self.num_parameters)
-        losses = [self.evaluate_loss_at(loss, p) for p in parameters_batch]
+        losses = [self.evaluate_loss_at(hamiltonian, p) for p in parameters_batch]
         return sum(losses)/batch_size
 
-    def lattice_average(self, loss):
+    def lattice_average(self, hamiltonian):
         """Compute loss average by summing over all lattice points."""
 
         state_0 = Statevector.from_label('0' * self.num_qubits)
@@ -210,7 +210,7 @@ class CliffordPhi(QuantumCircuit):
             qc = self.bind_parameters(params)
             state = state_0.evolve(qc)
 
-            averages = [coeff * state.expectation_value(pauli) for coeff, pauli in zip(loss.coefficients, loss.paulis)]
+            averages = [coeff * state.expectation_value(pauli) for coeff, pauli in zip(hamiltonian.coeffs, hamiltonian.paulis)]
             return sum(averages)
 
         grid = TrigonometricPolynomial.binary_grid(self.num_parameters)
@@ -219,10 +219,10 @@ class CliffordPhi(QuantumCircuit):
 
         return sum(losses) / len(losses)
 
-    def average(self, loss):
+    def average(self, hamiltonian):
         """Compute the average of the loss function over all parameters in the circuit."""
         individual_averages = [
-            coeff * self.average_pauli(pauli) for coeff, pauli in zip(loss.coefficients, loss.paulis)
+            coeff * self.average_pauli(pauli) for coeff, pauli in zip(hamiltonian.coeffs, hamiltonian.paulis)
         ]
         return sum(individual_averages)
 
@@ -392,19 +392,55 @@ class PauliRotation:
     #     return Pauli(''.join(labels))
 
 
-class LossHamiltonian:
-    def __init__(self, coefficients, paulis):
+class Loss:
+    """Loss function is always assumed to be of the form L=<0|U* H U|0>.
 
-        self.coefficients = coefficients
-        self.paulis = paulis
+    However, for the unitary compilation problem U is a non-trivial function of the circuit."""
+    def __init__(self, circuit, hamiltonian):
+        self.hamiltonian = hamiltonian
+        self.circuit = circuit
+
+    def evaluate_at(self, qc):
+        full_qc = self.circuit(qc)
+        return Statevector(full_qc).expectation_value(self.hamiltonian.to_operator())
 
     @staticmethod
-    def from_state(state):
-        rho = DensityMatrix(state)
-        pauli_list = SparsePauliOp.from_operator(rho)
-        assert np.allclose(np.imag(pauli_list.coeffs), 0), "Coefficients shouldn't be imaginary"
+    def from_hamiltonian(H):
+        assert np.allclose(H.conj().T, H), f'Hamiltonian is not hermitian. H =\n {H}'
+        sop = SparsePauliOp.from_operator(H)
+        loss_circuit = lambda qc: qc
+        return Loss(loss_circuit, sop)
 
-        return LossHamiltonian(np.real(pauli_list.coeffs), pauli_list.paulis)
+    @staticmethod
+    def from_state(s):
+        rho = DensityMatrix(s)
+        return Loss.from_hamiltonian(rho.data)
 
-    def matrix(self):
-        return sum(np.array([c * p.to_matrix() for c, p in zip(self.coefficients, self.paulis)]))
+    @staticmethod
+    def from_unitary(u):
+        num_qubits = int(np.log2(u.shape[0]))
+
+        def loss_circuit(qc):
+            assert qc.num_qubits == num_qubits, f'Number of qubits in the circuit {qc.num_qubits} does not match that in unitary {num_qubits}'
+            qc_extended = Loss.hilbert_schmidt_circuit(num_qubits)
+            qc_extended.append(qc, range(num_qubits))
+            return qc_extended
+
+        u_circuit = Loss.hilbert_schmidt_circuit(num_qubits)
+        u_circuit.append(Operator(u), range(num_qubits))
+        u_state = Statevector(u_circuit)
+        u_rho = DensityMatrix(u_state)
+        u_hamiltonian = SparsePauliOp.from_operator(u_rho)
+
+        return Loss(loss_circuit, u_hamiltonian)
+
+    @staticmethod
+    def hilbert_schmidt_circuit(num_qubits):
+        qc = QuantumCircuit(2*num_qubits)
+        for i in range(num_qubits):
+            qc.h(i)
+        for i in range(num_qubits):
+            qc.cx(i, i+num_qubits)
+        return qc
+
+

@@ -4,9 +4,9 @@ import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
 from qiskit.circuit.library import RXGate, RYGate, RZGate, RZZGate, RXXGate, RZXGate
-from qiskit.quantum_info import random_clifford, Operator, random_statevector, Pauli
+from qiskit.quantum_info import random_clifford, Operator, random_statevector, Pauli, random_unitary
 
-from wave_expansion import CliffordPhi, PauliRotation, LossHamiltonian, TrigonometricPolynomial, CliffordPhiVQA, FourierMode
+from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial, CliffordPhiVQA, FourierMode
 
 
 def random_clifford_phi(num_qubits, num_parameters, seed=0):
@@ -72,10 +72,33 @@ def qc_for_generator_testing():
 def test_loss_from_state():
     """Test reconstructing density matrix from the loss function."""
     state = random_statevector(2**4, seed=0)
-    loss = LossHamiltonian.from_state(state)
+    loss = Loss.from_state(state)
     rho_matrix = np.outer(state.data, state.data.conj().T)
 
-    assert np.allclose(rho_matrix, loss.matrix())
+    assert np.allclose(rho_matrix, loss.hamiltonian.to_matrix())
+
+
+def hilbert_schmidt_product(u, v):
+    num_qubits = int(np.log2(u.shape[0]))
+    return np.abs((u.conj() * v).sum())**2/4**num_qubits
+
+
+def test_loss_from_unitary(num_qubits=3, num_parameters=6):
+    """Test reconstructing Hilbert-Schmidt product from the loss."""
+    u = random_unitary(2**num_qubits, seed=0)
+    qc = random_clifford_phi(num_qubits, num_parameters, seed=0)
+
+    loss = Loss.from_unitary(u.data)
+
+    np.random.seed(0)
+    num_samples = 10
+    parameters = np.random.rand(num_samples, qc.num_parameters)
+    qc_samples = [qc.bind_parameters(p) for p in parameters]
+
+    plain_losses = [hilbert_schmidt_product(Operator(q).data, u.data) for q in qc_samples]
+    indirect_losses = [loss.evaluate_at(q) for q in qc_samples]
+
+    assert np.allclose(plain_losses, indirect_losses)
 
 
 def test_average(max_num_qubits=2, max_num_parameters=3):
@@ -86,9 +109,9 @@ def test_average(max_num_qubits=2, max_num_parameters=3):
             qc = random_clifford_phi(num_qubits, num_parameters, seed=41)
             state = random_statevector(2 ** num_qubits, seed=42)
 
-            loss = LossHamiltonian.from_state(state)
+            loss = Loss.from_state(state)
 
-            assert np.allclose(qc.lattice_average(loss), qc.average(loss))
+            assert np.allclose(qc.lattice_average(loss.hamiltonian), qc.average(loss.hamiltonian))
 
 
 def test_trigonometric_polynomial():
@@ -191,7 +214,7 @@ def test_first_fourier():
     num_parameters = 1
 
     qc = random_clifford_phi(num_qubits, num_parameters)
-    loss = LossHamiltonian.from_state(random_statevector(2 ** num_qubits, seed=0))
+    loss = Loss.from_state(random_statevector(2 ** num_qubits, seed=0))
     vqa = CliffordPhiVQA(qc, loss)
     vqa.compute_fourier_mode(1)
 
@@ -213,7 +236,7 @@ def test_full_fourier_reconstruction(max_num_qubits=3, max_num_parameters=3):
     for num_qubits in range(2, max_num_qubits+1):
         for num_parameters in range(max_num_parameters+1):
             qc = random_clifford_phi(num_qubits, num_parameters)
-            loss = LossHamiltonian.from_state(random_statevector(2 ** num_qubits, seed=num_qubits * num_parameters))
+            loss = Loss.from_state(random_statevector(2 ** num_qubits, seed=num_qubits * num_parameters))
             vqa = CliffordPhiVQA(qc, loss)
 
             loss_from_fourier = vqa.fourier_expansion()
