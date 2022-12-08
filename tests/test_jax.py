@@ -51,9 +51,13 @@ def test_jax_fourier_mode(num_qubits=2, num_parameters=4):
     vqa.fourier_expansion()
 
     np.random.seed(0)
+    num_samples = 10
     for fmode in vqa.fourier_modes:
-        x = np.random.rand(qc.num_parameters)
-        assert np.allclose(fmode.evaluate_at(x), jax_fourier_mode(fmode)(x))
+        xx = np.random.rand(num_samples, qc.num_parameters)
+        direct_values = [fmode.evaluate_at(x) for x in xx]
+        # jax_values = [jax_fourier_mode(fmode)(x) for x in xx]
+        jax_values = vmap(jit(jax_fourier_mode(fmode)))(xx)
+        assert np.allclose(direct_values, jax_values)
 
 
 def _test_jax_loss(num_qubits, num_parameters, loss):

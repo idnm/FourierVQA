@@ -1,5 +1,5 @@
 from collections import namedtuple
-from random import sample
+from random import sample, seed
 
 import numpy as np
 import jax.numpy as jnp
@@ -36,6 +36,7 @@ def linear_ansatz_circuit(num_qubits, depth):
 
 def random_pauli_loss(num_qubits, num_terms):
     np.random.seed(0)
+    seed(0)
     paulis = sample([p.to_label() for p in pauli_basis(num_qubits)], num_terms)
     coeffs = np.random.rand(num_terms)/np.sqrt(num_terms)
 
@@ -63,7 +64,6 @@ class Experiment:
 
     @staticmethod
     def random_parameter_batch(num_samples, num_parameters):
-        num_samples = 100
         values_batch = 2 * jnp.pi * random.uniform(random.PRNGKey(0), (num_samples, num_parameters))
         angles_batch = [Experiment.angles(v) for v in values_batch]
         return angles_batch
