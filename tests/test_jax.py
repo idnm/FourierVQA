@@ -65,7 +65,7 @@ def _test_jax_loss(num_qubits, num_parameters, loss):
     xx = jax.random.uniform(key, (num_samples, qc.num_parameters))
 
     direct_values = jnp.array([vqa.evaluate_loss_at(np.array(x)) for x in xx])
-    jax_values = vmap(jit(jax_loss(vqa.circuit, loss.hamiltonian)))(xx)
+    jax_values = vmap(jit(jax_loss(vqa.circuit, vqa.loss.hamiltonian)))(xx)
 
     assert jnp.allclose(direct_values, jax_values)
 

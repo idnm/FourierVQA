@@ -3,11 +3,13 @@ from time import time
 
 
 import numpy as np
+from mynimize import OptOptions
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
 from qiskit.circuit.library import RXGate, RYGate, RZGate, RZZGate, RXXGate, RZXGate
 from qiskit.quantum_info import random_clifford, Operator, random_statevector, Pauli, random_unitary
 
+from experiments_utils import Experiment
 from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial, CliffordPhiVQA, FourierMode
 
 
@@ -256,40 +258,12 @@ def _test_random_vqa_fourier_expansion(num_qubits, num_parameters, loss):
     assert all([np.allclose(vqa.evaluate_loss_at(p), loss_from_fourier(p)) for p in random_parameters])
 
 
-def linear_ansatz_circuit(num_qubits, depth):
-    qc = CliffordPhi(num_qubits)
-    for i in range(num_qubits):
-        # qc.rz(Parameter(f'z_{i}'), i)
-        qc.rx(Parameter(f'x_0{i}'), i)
-        qc.rz(Parameter(f'z_0{i}'), i)
-
-    i = 0
-    for d in range(1, depth + 1):
-        i = i % num_qubits
-        j = (i + 1) % num_qubits
-        qc.cz(i, j)
-        for k in (i, j):
-            qc.rx(Parameter(f'x_{d}{k}'), k)
-            # qc.ry(Parameter(f'y_{d}{k}'), k)
-            qc.rz(Parameter(f'z_{d}{k}'), k)
-        i += 1
-
-    return qc
-
-
 def test_time_average():
-    num_qubits = 2
+    num_qubits = 5
+    depth = 10
+    num_pauli_terms = 200
 
-    # Target unitary == Random diagonal
-    m = np.diag(np.exp(1j * np.random.rand(2 ** num_qubits)))
-    loss = Loss.from_unitary(Operator(m))
-
-    # The ansatz
-    depth = 4
-    qc = linear_ansatz_circuit(num_qubits, depth)
-
-    vqa = CliffordPhiVQA(qc, loss)
-    start_time = time()
+    e = Experiment(num_qubits, depth, num_pauli_terms)
+    vqa = e.vqa
     vqa.compute_fourier_mode(0)
-    end_time = time()
-    # print(f'\n Execution time:end_time-start_time)
+

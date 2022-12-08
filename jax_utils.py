@@ -31,11 +31,11 @@ def jax_tensor(qc: CliffordPhi, initial_state: Union[str, jnp.array] = '0'):
         i = 0
         s = initial_state
         for gate, q_indices in qc.clifford_pauli_data:
+            q_indices = reversed_indices(q_indices, num_qubits)  # Dirty solution, should be cleared up.
             if CliffordPhi.is_clifford(gate):
                 unitary = Clifford(gate).to_matrix()
             else:
                 unitary = jax_pauli_rotation(gate.pauli, parameters[i])
-                q_indices = reversed_indices(q_indices, num_qubits)  # Dirty solution, should be cleared up.
                 i += 1
 
             unitary_tensor = unitary.reshape([2]*2*len(q_indices))
@@ -67,7 +67,7 @@ def gate_transposition(placement):
 def transposition(n_qubits, placement):
     """Return a transposition that relabels tensor axes correctly.
     Example (from the figure above): n=6, placement=[1, 3] gives [2, 0, 3, 1, 4, 5].
-    Twiseted: n=6, placement=[3, 1] gives [2, 1, 3, 0, 4, 5]."""
+    Twisted: n=6, placement=[3, 1] gives [2, 1, 3, 0, 4, 5]."""
 
     gate_width = len(placement)
 
@@ -126,14 +126,10 @@ def jax_fourier_mode(fourier_mode):
 
 def jax_loss(qc, hamiltonian):
     evolved_state = jax_tensor(qc, initial_state='0')
-    # pauli_matrices = jnp.array([p.to_matrix() for p in hamiltonian.paulis])
-    # coefficients = jnp.array(hamiltonian.coeffs)
-
-    # total_matrix = sum([c*p for c, p in zip(coefficients, pauli_matrices)])
 
     def loss_func(parameters):
         state = evolved_state(parameters)
-        return jnp.real(state.conj().T @ hamiltonian.to_matrix() @ state)
+        return jnp.real(state.conj() @ hamiltonian.to_matrix() @ state)
 
     return loss_func
 

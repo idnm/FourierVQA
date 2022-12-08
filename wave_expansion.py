@@ -124,34 +124,24 @@ class CliffordPhi(QuantumCircuit):
     def clifford_pauli_data(self):
         data = []
 
-        trivial_clifford = Clifford(QuantumCircuit(self.num_qubits))
-        current_clifford = trivial_clifford
         for gate, qargs, cargs in self.data:
             q_indices = [q._index for q in qargs]
-            if self.is_clifford(gate):
+            try:
                 gate = Clifford(gate)
-                current_clifford = current_clifford.compose(gate, q_indices)
-            elif gate.is_parameterized():
-                if not current_clifford == trivial_clifford:
-                    instruction = [current_clifford, range(self.num_qubits)]
-                    data.append(instruction)
-                    current_clifford = trivial_clifford
+                instruction = [gate, q_indices]
+            except (QiskitError, TypeError):
+                if gate.is_parameterized():
+                    if gate.name not in self.parametric_gates_to_pauli_gates_dict:
+                        new_pauli_rotation_gate = PauliRotation(gate)
+                        pauli = new_pauli_rotation_gate.pauli
+                        pauli_root = new_pauli_rotation_gate.pauli_root
+                        self.parametric_gates_to_pauli_gates_dict[gate.name] = (pauli, pauli_root)
 
-                if gate.name not in self.parametric_gates_to_pauli_gates_dict:
-                    new_pauli_rotation_gate = PauliRotation(gate)
-                    pauli = new_pauli_rotation_gate.pauli
-                    pauli_root = new_pauli_rotation_gate.pauli_root
-                    self.parametric_gates_to_pauli_gates_dict[gate.name] = (pauli, pauli_root)
+                    pauli_rotation = PauliRotation(gate, self.parametric_gates_to_pauli_gates_dict)
+                    instruction = [pauli_rotation, q_indices]
+                else:
+                    raise TypeError(f"Gate {gate} is neither Clifford nor parametric")
 
-                pauli_rotation = PauliRotation(gate, self.parametric_gates_to_pauli_gates_dict)
-                instruction = [pauli_rotation, q_indices]
-                data.append(instruction)
-            else:
-                raise TypeError(f"Gate {gate} is neither Clifford nor parametric")
-
-        last_clifford = current_clifford
-        if not last_clifford == trivial_clifford:
-            instruction = [last_clifford, range(self.num_qubits)]
             data.append(instruction)
 
         return data
@@ -179,11 +169,12 @@ class CliffordPhi(QuantumCircuit):
 
     @staticmethod
     def is_clifford(gate):
-        try:
-            Clifford(gate)
-            return True
-        except (QiskitError, TypeError):
-            return False
+        return not isinstance(gate, PauliRotation)
+        # try:
+        #     Clifford(gate)
+        #     return True
+        # except (QiskitError, TypeError):
+        #     return False
 
     @staticmethod
     def parametric_gates(gate_list):
@@ -256,8 +247,8 @@ class CliffordPhi(QuantumCircuit):
             if self.is_clifford(gate):
                 continue
             generator = gate.full_pauli_generator(qubit_indices, self.num_qubits)
-            for clifford, _ in self.clifford_gates(clifford_pauli_gates[i:]):
-                generator = generator.evolve(clifford, frame='s')
+            for clifford, qubits in self.clifford_gates(clifford_pauli_gates[i:]):
+                generator = generator.evolve(clifford, qubits, frame='s')
             generators.append(generator)
 
         return generators
@@ -276,7 +267,7 @@ class CliffordPhi(QuantumCircuit):
             state = StabilizerState(QuantumCircuit(self.num_qubits))
 
         for gate, qargs in self.clifford_gates(self.clifford_pauli_data):
-            state = state.evolve(gate)
+            state = state.evolve(gate, qargs)
 
         return state
 
@@ -420,6 +411,7 @@ class Loss:
     def from_unitary(u):
 
         num_qubits = u.num_qubits
+
         def loss_circuit(qc):
             assert qc.num_qubits == u.num_qubits, f'Number of qubits in the circuit {qc.num_qubits} does not match that in unitary {num_qubits}'
             qc_extended = Loss.hilbert_schmidt_circuit(num_qubits)
