@@ -124,21 +124,16 @@ def jax_fourier_mode(fourier_mode):
     return f
 
 
-def jax_loss(qc, loss):
+def jax_loss(qc, hamiltonian):
     evolved_state = jax_tensor(qc, initial_state='0')
-    pauli_matrices = jnp.array([p.to_matrix() for p in loss.paulis])
-    coefficients = jnp.array(loss.coefficients)
+    # pauli_matrices = jnp.array([p.to_matrix() for p in hamiltonian.paulis])
+    # coefficients = jnp.array(hamiltonian.coeffs)
 
-    total_matrix = sum([c*p for c, p in zip(coefficients, pauli_matrices)])
-    # jnp.tensordot(coefficients, pauli_matrices, axes=[[0], [0]])
+    # total_matrix = sum([c*p for c, p in zip(coefficients, pauli_matrices)])
 
     def loss_func(parameters):
         state = evolved_state(parameters)
-        return jnp.real(state.conj().T @ total_matrix @ state)
-
-    # def loss_full(parameters):
-    #     pauli_losses = vmap(partial(loss_single, parameters))(pauli_matrices)
-    #     return (coefficients * pauli_losses).sum()
+        return jnp.real(state.conj().T @ hamiltonian.to_matrix() @ state)
 
     return loss_func
 

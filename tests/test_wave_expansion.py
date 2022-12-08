@@ -232,7 +232,7 @@ def test_pauli_generator_from_gate():
     assert PauliRotation.pauli_generator_from_gate(RZXGate(Parameter('theta'))) == Pauli('XZ')
 
 
-def test_full_fourier_reconstruction(num_qubits=3, num_parameters=3):
+def test_full_fourier_reconstruction(num_qubits=2, num_parameters=3):
     np.random.seed(0)
     h = np.random.rand(2 ** num_qubits, 2 ** num_qubits)
     hamiltonian_loss = Loss.from_hamiltonian(h+h.conj().T)
@@ -240,10 +240,15 @@ def test_full_fourier_reconstruction(num_qubits=3, num_parameters=3):
     unitary_loss = Loss.from_unitary(random_unitary(2 ** num_qubits, seed=0))
 
     for loss in [hamiltonian_loss, state_loss, unitary_loss]:
-        qc = random_clifford_phi(num_qubits, num_parameters)
-        vqa = CliffordPhiVQA(qc, loss)
+        _test_random_vqa_fourier_expansion(num_qubits, num_parameters, loss)
 
-        loss_from_fourier = vqa.fourier_expansion()
-        random_parameters = 2*np.pi*np.random.rand(10, num_parameters)
 
-        assert all([np.allclose(vqa.evaluate_loss_at(p), loss_from_fourier(p)) for p in random_parameters])
+def _test_random_vqa_fourier_expansion(num_qubits, num_parameters, loss):
+    qc = random_clifford_phi(num_qubits, num_parameters)
+    vqa = CliffordPhiVQA(qc, loss)
+
+    num_samples = 10
+    loss_from_fourier = vqa.fourier_expansion()
+    random_parameters = 2*np.pi*np.random.rand(num_samples, num_parameters)
+
+    assert all([np.allclose(vqa.evaluate_loss_at(p), loss_from_fourier(p)) for p in random_parameters])

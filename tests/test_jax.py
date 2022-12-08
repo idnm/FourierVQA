@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import jax
 from jax import vmap, jit
 from qiskit.circuit import Parameter
-from qiskit.quantum_info import Operator, Statevector, random_clifford, random_statevector
+from qiskit.quantum_info import Operator, Statevector, random_clifford, random_statevector, random_unitary
 
 from jax_utils import jax_tensor, jax_fourier_mode, jax_loss
 from test_wave_expansion import random_clifford_phi
@@ -56,18 +56,25 @@ def test_jax_fourier_mode(num_qubits=2, num_parameters=4):
         assert np.allclose(fmode.evaluate_at(x), jax_fourier_mode(fmode)(x))
 
 
-def test_jax_loss(num_qubits=3, num_parameters=12):
+def _test_jax_loss(num_qubits, num_parameters, loss):
     qc = random_clifford_phi(num_qubits, num_parameters)
-    loss = Loss.from_state(random_statevector(2 ** num_qubits))
-
     vqa = CliffordPhiVQA(qc, loss)
 
     key = jax.random.PRNGKey(0)
-    xx = jax.random.uniform(key, (100, qc.num_parameters))
+    num_samples = 10
+    xx = jax.random.uniform(key, (num_samples, qc.num_parameters))
 
     direct_values = jnp.array([vqa.evaluate_loss_at(np.array(x)) for x in xx])
-    jax_values = vmap(jit(jax_loss(qc, loss)))(xx)
+    jax_values = vmap(jit(jax_loss(vqa.circuit, loss.hamiltonian)))(xx)
 
     assert jnp.allclose(direct_values, jax_values)
+
+
+def test_jax_loss(num_qubits=3, num_parameters=12):
+    loss_state = Loss.from_state(random_statevector(2 ** num_qubits))
+    loss_unitary = Loss.from_unitary(random_unitary(2 ** (num_qubits - 1)))  # One less qubit for speed.
+
+    _test_jax_loss(num_qubits, num_parameters, loss_state)
+    _test_jax_loss(num_qubits-1, num_parameters, loss_unitary)
 
 
