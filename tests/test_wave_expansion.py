@@ -256,24 +256,6 @@ def _test_random_vqa_fourier_expansion(num_qubits, num_parameters, loss):
     assert all([np.allclose(vqa.evaluate_loss_at(p), loss_from_fourier(p)) for p in random_parameters])
 
 
-def test_time_average():
-    num_qubits = 2
-
-    # Target unitary == Random diagonal
-    m = np.diag(np.exp(1j * np.random.rand(2 ** num_qubits)))
-    loss = Loss.from_unitary(Operator(m))
-
-    # The ansatz
-    depth = 4
-    qc = linear_ansatz_circuit(num_qubits, depth)
-
-    vqa = CliffordPhiVQA(qc, loss)
-    start_time = time()
-    vqa.compute_fourier_mode(0)
-    end_time = time()
-    # print(f'\n Execution time:end_time-start_time)
-
-
 def linear_ansatz_circuit(num_qubits, depth):
     qc = CliffordPhi(num_qubits)
     for i in range(num_qubits):
@@ -293,3 +275,21 @@ def linear_ansatz_circuit(num_qubits, depth):
         i += 1
 
     return qc
+
+
+def test_time_average():
+    num_qubits = 2
+
+    # Target unitary == Random diagonal
+    m = np.diag(np.exp(1j * np.random.rand(2 ** num_qubits)))
+    loss = Loss.from_unitary(Operator(m))
+
+    # The ansatz
+    depth = 4
+    qc = linear_ansatz_circuit(num_qubits, depth)
+
+    vqa = CliffordPhiVQA(qc, loss)
+    start_time = time()
+    vqa.compute_fourier_mode(0)
+    end_time = time()
+    # print(f'\n Execution time:end_time-start_time)
