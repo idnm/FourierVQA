@@ -277,7 +277,7 @@ def test_time_average():
 def linear_ansatz_circuit(num_qubits, depth):
     qc = CliffordPhi(num_qubits)
     for i in range(num_qubits):
-        qc.rz(Parameter(f'z_{i}'), i)
+        # qc.rz(Parameter(f'z_{i}'), i)
         qc.rx(Parameter(f'x_0{i}'), i)
         qc.rz(Parameter(f'z_0{i}'), i)
 
@@ -288,7 +288,7 @@ def linear_ansatz_circuit(num_qubits, depth):
         qc.cz(i, j)
         for k in (i, j):
             qc.rx(Parameter(f'x_{d}{k}'), k)
-            qc.ry(Parameter(f'y_{d}{k}'), k)
+            # qc.ry(Parameter(f'y_{d}{k}'), k)
             qc.rz(Parameter(f'z_{d}{k}'), k)
         i += 1
 

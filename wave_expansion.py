@@ -133,7 +133,7 @@ class CliffordPhi(QuantumCircuit):
                 current_clifford = current_clifford.compose(gate, q_indices)
             elif gate.is_parameterized():
                 if not current_clifford == trivial_clifford:
-                    instruction = [current_clifford.to_instruction(), range(self.num_qubits)]
+                    instruction = [current_clifford, range(self.num_qubits)]
                     data.append(instruction)
                     current_clifford = trivial_clifford
 
