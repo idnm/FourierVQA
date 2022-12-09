@@ -60,20 +60,20 @@ class Experiment:
         qc = linear_ansatz_circuit(self.num_qubits, self.depth)
         return CliffordPhiVQA(qc, self.loss)
 
-    angles = namedtuple('angles', 'values')
-
     @staticmethod
     def random_parameter_batch(num_samples, num_parameters):
         values_batch = 2 * jnp.pi * random.uniform(random.PRNGKey(0), (num_samples, num_parameters))
-        angles_batch = [Experiment.angles(v) for v in values_batch]
-        return angles_batch
+        return values_batch
+
+    def loss_func(self):
+        return jax_loss(self.vqa.circuit, self.vqa.loss.hamiltonian)
 
     def run(self, num_samples=100, opt_options=None):
         if not opt_options:
             opt_options = OptOptions(learning_rate=0.01, num_iterations=2000)
 
         angles_batch = self.random_parameter_batch(num_samples, self.vqa.circuit.num_parameters)
-        loss_func = lambda a: jax_loss(self.vqa.circuit, self.vqa.loss.hamiltonian)(a.values)
+        loss_func = self.loss_func()
         res = mynimize(loss_func, angles_batch, opt_options)
         plt.hist(np.array(res.all_best_losses))
         return res

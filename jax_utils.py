@@ -1,6 +1,7 @@
 from functools import partial
 from typing import Union
 
+import numpy as np
 from jax import vmap
 from qiskit.quantum_info import Statevector, Pauli, Clifford
 import jax.numpy as jnp
@@ -103,8 +104,15 @@ def monomial_array(order, p):
 
 
 def all_monomial_arrays(all_parameters, num_parameters, order):
-    parameter_configurations = CliffordPhiVQA.parameter_configurations(num_parameters, order)
-    parameter_tuples = all_parameters[jnp.array(list(parameter_configurations))]
+    parameter_configurations = list(CliffordPhiVQA.parameter_configurations(num_parameters, order))
+    # parameter_configurations = [(0,), (1,), (2,)]
+    # print('\nnum parameters', num_parameters)
+    # print('\norder', order)
+    # print('\nparameters', all_parameters)
+    # print('\n parameter configurations jnp', jnp.array(list(parameter_configurations)))
+    # print('\n parameter configurations np', np.array(list(parameter_configurations)))
+    # print('\n parameter configurations list', list(parameter_configurations))
+    parameter_tuples = all_parameters[jnp.array(parameter_configurations)]
     return vmap(partial(monomial_array, order))(parameter_tuples)
 
 

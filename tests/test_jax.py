@@ -2,9 +2,12 @@ import numpy as np
 import jax.numpy as jnp
 import jax
 from jax import vmap, jit
+from matplotlib import pyplot as plt
+from mynimize import OptOptions, mynimize
 from qiskit.circuit import Parameter
 from qiskit.quantum_info import Operator, Statevector, random_clifford, random_statevector, random_unitary
 
+from experiments_utils import Experiment
 from jax_utils import jax_tensor, jax_fourier_mode, jax_loss
 from test_wave_expansion import random_clifford_phi
 from wave_expansion import CliffordPhi, Loss, CliffordPhiVQA
@@ -82,3 +85,22 @@ def test_jax_loss(num_qubits=3, num_parameters=12):
     _test_jax_loss(num_qubits-1, num_parameters, loss_unitary)
 
 
+def test_jit():
+    num_qubits = 5
+    depth = 0
+    num_pauli_terms = 40
+
+    e = Experiment(num_qubits, depth, num_pauli_terms)
+    opt_options = OptOptions(learning_rate=0.01, num_iterations=5000)
+
+    vqa = e.vqa
+    vqa.fourier_expansion(up_to_order=2)
+    f0 = jax_fourier_mode(vqa.fourier_modes[0])
+    f1 = jax_fourier_mode(vqa.fourier_modes[1])
+    f2 = jax_fourier_mode(vqa.fourier_modes[2])
+
+    num_samples = 500
+    angles_batch = Experiment.random_parameter_batch(num_samples, vqa.circuit.num_parameters)
+    f1re = lambda x: jnp.real(f1(x))
+    proxy_res = mynimize(f1re, angles_batch, opt_options)
+    # plt.hist(np.array(proxy_res.all_best_losses))
