@@ -102,10 +102,9 @@ def monomial_array(order, p):
     return vmap(partial(monomial, p))(TrigonometricPolynomial.binary_grid(order))
 
 
-def all_monomial_arrays(all_p, order):
-    num_parameters = len(all_p)
+def all_monomial_arrays(all_parameters, num_parameters, order):
     parameter_configurations = CliffordPhiVQA.parameter_configurations(num_parameters, order)
-    parameter_tuples = all_p[jnp.array(list(parameter_configurations))]
+    parameter_tuples = all_parameters[jnp.array(list(parameter_configurations))]
     return vmap(partial(monomial_array, order))(parameter_tuples)
 
 
@@ -119,7 +118,7 @@ def jax_fourier_mode(fourier_mode):
                               CliffordPhiVQA.parameter_configurations(num_parameters, order)])
 
     def f(p):
-        return (coefficients * all_monomial_arrays(p, order)).sum()
+        return (coefficients * all_monomial_arrays(p, num_parameters, order)).sum()
 
     return f
 
