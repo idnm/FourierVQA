@@ -4,7 +4,7 @@ from typing import List
 
 import numpy as np
 from qiskit import QuantumCircuit, QiskitError
-from qiskit.circuit import ParameterExpression, Instruction, Gate, CircuitInstruction
+from qiskit.circuit import ParameterExpression, Instruction, Gate, CircuitInstruction, Parameter
 from qiskit.circuit.library import RZZGate, RZGate, RYGate, RXGate, IGate
 from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Statevector, DensityMatrix, SparsePauliOp, Operator, \
     pauli_basis
@@ -314,6 +314,8 @@ class PauliRotation:
 
     @staticmethod
     def pauli_generator_from_gate(gate):
+        gate = copy.deepcopy(gate)
+        gate.params = [Parameter('theta')]  # In case gate came with parameter like 0.5*Parameter('theta')
         qc = QuantumCircuit(gate.num_qubits)
         qc.append(gate, range(gate.num_qubits))
 

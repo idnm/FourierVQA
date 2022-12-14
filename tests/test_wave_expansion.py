@@ -183,6 +183,13 @@ def test_pauli_root():
 
         assert Operator(qc).equiv(Operator(qc_sqrt))
 
+    # Test fractional angles in pauli rotations.
+    qc = QuantumCircuit(1)
+    qc.rz(0.13*Parameter('z'), 0)
+    gate, qargs, cargs = qc.data[0]
+    pauli = PauliRotation.pauli_generator_from_gate(gate)
+    assert pauli == Pauli('Z')
+
 
 def parametric_circuits_are_equivalent(qc0, qc1):
 
