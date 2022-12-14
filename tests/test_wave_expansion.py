@@ -58,6 +58,20 @@ def test_circuit_reconstruction(num_qubits=3, num_parameters=4, seed=0):
     assert all(checks)
 
 
+def test_circuit_reconstruction_with_duplicate_parameters():
+    qc = QuantumCircuit(2)
+    parameters = [Parameter('x'), Parameter('z')]
+    qc.rx(parameters[0], 0)
+    qc.rx(parameters[0], 1)
+    qc.cx(0, 1)
+    qc.rz(parameters[1], 0)
+    qc.rz(parameters[1], 1)
+
+    qc = CliffordPhi.from_quantum_circuit(qc)
+    qc_re = reconstruct_circuit(qc)
+    assert parametric_circuits_are_equivalent(qc, qc_re)
+
+
 def qc_for_generator_testing():
     qc = CliffordPhi(3)
     p = [Parameter(f'p_{i}') for i in range(4)]
@@ -266,4 +280,3 @@ def test_time_average():
     e = Experiment(num_qubits, depth, num_pauli_terms)
     vqa = e.vqa
     vqa.compute_fourier_mode(0)
-

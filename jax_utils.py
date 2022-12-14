@@ -25,19 +25,16 @@ def jax_tensor(qc: CliffordPhi, initial_state: Union[str, jnp.array] = '0'):
     initial_state = initial_state.reshape([2]*num_qubits+[-1])
 
     def tensor(parameters):
-        permutation = qc.num_instruction_from_num_parameter
-        inverse_permutation = jnp.argsort(jnp.array(permutation))
-
-        parameters = jnp.array([parameters[i] for i in inverse_permutation])
-        i = 0
+        num_instruction = 0
         s = initial_state
         for gate, q_indices in qc.clifford_pauli_data:
             q_indices = reversed_indices(q_indices, num_qubits)  # Dirty solution, should be cleared up.
             if CliffordPhi.is_clifford(gate):
                 unitary = Clifford(gate).to_matrix()
             else:
+                i = qc.num_parameter_from_num_instruction[num_instruction]
                 unitary = jax_pauli_rotation(gate.pauli, parameters[i])
-                i += 1
+                num_instruction += 1
 
             unitary_tensor = unitary.reshape([2]*2*len(q_indices))
             s = apply_gate_to_tensor(unitary_tensor, s, list(q_indices), num_qubits)
@@ -105,13 +102,6 @@ def monomial_array(order, p):
 
 def all_monomial_arrays(all_parameters, num_parameters, order):
     parameter_configurations = list(CliffordPhiVQA.parameter_configurations(num_parameters, order))
-    # parameter_configurations = [(0,), (1,), (2,)]
-    # print('\nnum parameters', num_parameters)
-    # print('\norder', order)
-    # print('\nparameters', all_parameters)
-    # print('\n parameter configurations jnp', jnp.array(list(parameter_configurations)))
-    # print('\n parameter configurations np', np.array(list(parameter_configurations)))
-    # print('\n parameter configurations list', list(parameter_configurations))
     parameter_tuples = all_parameters[jnp.array(parameter_configurations)]
     return vmap(partial(monomial_array, order))(parameter_tuples)
 

@@ -287,6 +287,12 @@ class CliffordPhi(QuantumCircuit):
         return qc
 
     @property
+    def num_parameter_from_num_instruction(self):
+        parameters = list(self.parameters)
+        parametric_instructions = [gate for gate, _, _ in self.data if gate.is_parameterized()]
+        return [parameters.index(gate.params[0]) for gate in parametric_instructions]
+
+    @property
     def num_instruction_from_num_parameter(self):
         parameters = self.parameters
         parametric_instructions = [gate for gate, _, _ in self.data if gate.is_parameterized()]

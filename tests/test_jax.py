@@ -4,6 +4,7 @@ import jax
 from jax import vmap, jit
 from matplotlib import pyplot as plt
 from mynimize import OptOptions, mynimize
+from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
 from qiskit.quantum_info import Operator, Statevector, random_clifford, random_statevector, random_unitary
 
@@ -44,6 +45,25 @@ def test_jax_unitary(max_num_qubits=3, max_num_parameters=5):
             jax_state = jax_tensor(qc, '0')(parameters)
 
             assert equal_up_to_global_phase(qiskit_state, jax_state)
+
+
+def test_jax_unitary_with_duplicate_parameters():
+    qc = QuantumCircuit(3)
+    parameters = [Parameter('x'), Parameter('z')]
+    qc.rx(parameters[0], 0)
+    qc.rx(parameters[0], 2)
+    qc.cx(0, 1)
+    qc.rz(parameters[1], 1)
+    qc.rz(parameters[1], 2)
+
+    qc = CliffordPhi.from_quantum_circuit(qc)
+
+    np.random.seed(0)
+    parameters = np.random.rand(qc.num_parameters)
+    qiskit_unitary = Operator(qc.bind_parameters(parameters)).data
+    jax_unitary = jax_tensor(qc, 'id')(parameters)
+
+    assert equal_up_to_global_phase(qiskit_unitary, jax_unitary)
 
 
 def test_jax_fourier_mode(num_qubits=2, num_parameters=4):
