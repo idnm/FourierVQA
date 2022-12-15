@@ -46,7 +46,7 @@ def jax_tensor(qc: CliffordPhi, initial_state: Union[str, jnp.array] = '0'):
     all_parameters = qc.all_parameters
 
     def tensor(parameter_values):
-        ordered_parameter_values = all_parameters_from_parameters_func(parameters, all_parameters)(parameter_values)
+        all_parameter_values = all_parameters_from_parameters_func(parameters, all_parameters)(parameter_values)
 
         num_instruction = 0
         s = initial_state
@@ -55,8 +55,7 @@ def jax_tensor(qc: CliffordPhi, initial_state: Union[str, jnp.array] = '0'):
             if CliffordPhi.is_clifford(gate):
                 unitary = Clifford(gate).to_matrix()
             else:
-                # i = qc.num_parameter_from_num_instruction[num_instruction]
-                unitary = jax_pauli_rotation(gate.pauli, ordered_parameter_values[num_instruction])
+                unitary = jax_pauli_rotation(gate.pauli, all_parameter_values[num_instruction])
                 num_instruction += 1
 
             unitary_tensor = unitary.reshape([2]*2*len(q_indices))
