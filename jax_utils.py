@@ -9,6 +9,24 @@ import jax.numpy as jnp
 from wave_expansion import CliffordPhi, TrigonometricPolynomial, CliffordPhiVQA
 
 
+def bind_single(all_parameters, parameters, i):
+    bind_dict = {p: 0 for p in parameters}
+    bind_dict.update({parameters[i]: 1})
+    bound_parameters = []
+    for p in all_parameters:
+        parameter = list(p.parameters)[0]
+        value = float(p.bind({parameter: bind_dict[parameter]}))
+        bound_parameters.append(value)
+    return np.array(bound_parameters)
+
+
+def all_parameters_from_parameters_func(parameters, all_parameters):
+    """Only works assuming all_parameters are linearly related to parameters."""
+
+    basis_vectors = np.array([bind_single(all_parameters, parameters, i) for i in range(len(parameters))])
+    return lambda parameter_values: parameter_values @ basis_vectors
+
+
 def jax_tensor(qc: CliffordPhi, initial_state: Union[str, jnp.array] = '0'):
     """JAX-transformable unitary or state of a Clifford Phi circuit."""
 
@@ -24,7 +42,12 @@ def jax_tensor(qc: CliffordPhi, initial_state: Union[str, jnp.array] = '0'):
     initial_shape = initial_state.shape
     initial_state = initial_state.reshape([2]*num_qubits+[-1])
 
-    def tensor(parameters):
+    parameters = list(qc.parameters)
+    all_parameters = qc.all_parameters
+
+    def tensor(parameter_values):
+        ordered_parameter_values = all_parameters_from_parameters_func(parameters, all_parameters)(parameter_values)
+
         num_instruction = 0
         s = initial_state
         for gate, q_indices in qc.clifford_pauli_data:
@@ -32,8 +55,8 @@ def jax_tensor(qc: CliffordPhi, initial_state: Union[str, jnp.array] = '0'):
             if CliffordPhi.is_clifford(gate):
                 unitary = Clifford(gate).to_matrix()
             else:
-                i = qc.num_parameter_from_num_instruction[num_instruction]
-                unitary = jax_pauli_rotation(gate.pauli, parameters[i])
+                # i = qc.num_parameter_from_num_instruction[num_instruction]
+                unitary = jax_pauli_rotation(gate.pauli, ordered_parameter_values[num_instruction])
                 num_instruction += 1
 
             unitary_tensor = unitary.reshape([2]*2*len(q_indices))

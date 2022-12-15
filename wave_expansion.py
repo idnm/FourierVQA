@@ -181,6 +181,10 @@ class CliffordPhi(QuantumCircuit):
         """Parametric gates in the circuit."""
         return [gate for gate in gate_list if gate.operation.is_parametric()]
 
+    @property
+    def all_parameters(self):
+        return [instruction.operation.params[0] for instruction in self.data if instruction.operation.is_parameterized()]
+
     def evaluate_loss_at(self, hamiltonian, parameters):
         qc = self.bind_parameters(parameters)
         state = Statevector(qc)
