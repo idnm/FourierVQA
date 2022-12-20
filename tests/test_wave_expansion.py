@@ -9,15 +9,17 @@ from qiskit.circuit import Parameter
 from qiskit.circuit.library import RXGate, RYGate, RZGate, RZZGate, RXXGate, RZXGate
 from qiskit.quantum_info import random_clifford, Operator, random_statevector, Pauli, random_unitary
 
+from duplicate_utils import lift_duplicate_parameters
 from experiments_utils import Experiment
 from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial, CliffordPhiVQA, FourierMode
 
 
-def random_clifford_phi(num_qubits, num_parameters, seed=0):
+def random_clifford_phi(num_qubits, num_parametric_gates, num_duplicate_parameters=0, seed=0):
     """Generate a random CliffordPhi circuit."""
     random.seed(seed)
     qc = QuantumCircuit(num_qubits)
-    for i in range(num_parameters):
+    parameters = [Parameter(f'θ_{i}') for i in range(num_parametric_gates-num_duplicate_parameters)]
+    for i in range(num_parametric_gates):
         clifford_gate = random_clifford(num_qubits, seed=seed+i)
         qc.append(clifford_gate.to_instruction(), range(num_qubits))
 
@@ -25,7 +27,7 @@ def random_clifford_phi(num_qubits, num_parameters, seed=0):
             parametric_gate = random.choice([RXGate, RZGate, RYGate])
         else:
             parametric_gate = random.choice([RXGate, RZGate, RYGate, RZZGate, RZXGate])
-        parameter = Parameter(f'θ_{i}')
+        parameter = parameters[i % (num_parametric_gates - num_duplicate_parameters)]
         position = random.sample(range(num_qubits), parametric_gate(0).num_qubits)
 
         qc.append(parametric_gate(parameter), position)
@@ -234,18 +236,6 @@ def test_fourier_mode_evaluation():
     assert np.allclose(fmode2.average({1: 3., 2: 4.}), tp3.evaluate_at([3., 4.]))
 
 
-def test_first_fourier():
-    num_qubits = 2
-    num_parameters = 1
-
-    qc = random_clifford_phi(num_qubits, num_parameters)
-    loss = Loss.from_state(random_statevector(2 ** num_qubits, seed=0))
-    vqa = CliffordPhiVQA(qc, loss)
-    vqa.compute_fourier_mode(1)
-
-    vqa.evaluate_loss_at([1.])
-
-
 def test_pauli_generator_from_gate():
 
     assert PauliRotation.pauli_generator_from_gate(RXGate(Parameter('theta'))) == Pauli('X')
@@ -257,15 +247,26 @@ def test_pauli_generator_from_gate():
     assert PauliRotation.pauli_generator_from_gate(RZXGate(Parameter('theta'))) == Pauli('XZ')
 
 
-def test_full_fourier_reconstruction(num_qubits=2, num_parameters=3):
-    np.random.seed(0)
-    h = np.random.rand(2 ** num_qubits, 2 ** num_qubits)
-    hamiltonian_loss = Loss.from_hamiltonian(h+h.conj().T)
-    state_loss = Loss.from_state(random_statevector(2 ** num_qubits, seed=0))
-    unitary_loss = Loss.from_unitary(random_unitary(2 ** num_qubits, seed=0))
+def test_time_average():
+    num_qubits = 5
+    depth = 10
+    num_pauli_terms = 200
 
-    for loss in [hamiltonian_loss, state_loss, unitary_loss]:
-        _test_random_vqa_fourier_expansion(num_qubits, num_parameters, loss)
+    e = Experiment(num_qubits, depth, num_pauli_terms)
+    vqa = e.vqa
+    vqa.compute_fourier_mode(0)
+
+
+def test_first_fourier():
+    num_qubits = 2
+    num_parameters = 1
+
+    qc = random_clifford_phi(num_qubits, num_parameters)
+    loss = Loss.from_state(random_statevector(2 ** num_qubits, seed=0))
+    vqa = CliffordPhiVQA(qc, loss)
+    vqa.compute_fourier_mode(1)
+
+    vqa.evaluate_loss_at([1.])
 
 
 def _test_random_vqa_fourier_expansion(num_qubits, num_parameters, loss):
@@ -279,11 +280,42 @@ def _test_random_vqa_fourier_expansion(num_qubits, num_parameters, loss):
     assert all([np.allclose(vqa.evaluate_loss_at(p), loss_from_fourier(p)) for p in random_parameters])
 
 
-def test_time_average():
-    num_qubits = 5
-    depth = 10
-    num_pauli_terms = 200
+def test_full_fourier_reconstruction(num_qubits=2, num_parameters=3):
+    np.random.seed(0)
+    h = np.random.rand(2 ** num_qubits, 2 ** num_qubits)
+    hamiltonian_loss = Loss.from_hamiltonian(h + h.conj().T)
+    state_loss = Loss.from_state(random_statevector(2 ** num_qubits, seed=0))
+    unitary_loss = Loss.from_unitary(random_unitary(2 ** num_qubits, seed=0))
 
-    e = Experiment(num_qubits, depth, num_pauli_terms)
-    vqa = e.vqa
-    vqa.compute_fourier_mode(0)
+    for loss in [hamiltonian_loss, state_loss, unitary_loss]:
+        _test_random_vqa_fourier_expansion(num_qubits, num_parameters, loss)
+
+
+def test_lifting_circuit(num_qubits=4, num_parametric_gates=10, num_duplicates=6):
+    qc = random_clifford_phi(num_qubits, num_parametric_gates, num_duplicates)
+    qc_lifted, converter = lift_duplicate_parameters(qc)
+
+    num_samples = 10
+    params_batch = np.random.rand(num_samples, qc.num_parameters)
+    qc_batch = [Operator(qc.bind_parameters(p)) for p in params_batch]
+    qc_lifted_batch = [Operator(qc_lifted.bind_parameters(converter(p))) for p in params_batch]
+
+    assert all(op1.equiv(op2) for op1, op2 in zip(qc_batch, qc_lifted_batch))
+
+
+def test_full_fourier_expansion_with_duplicate_parameters(
+        num_qubits=3, num_parameteric_gates=4, num_duplicate_parameters=2):
+
+    qc = random_clifford_phi(num_qubits, num_parameteric_gates, num_duplicate_parameters)
+    qc_lifted, converter = lift_duplicate_parameters(qc)
+    qc_lifted = CliffordPhi.from_quantum_circuit(qc_lifted)
+    loss = Loss.from_state(random_statevector(2 ** qc.num_qubits, seed=0))
+
+    vqa = CliffordPhiVQA(qc_lifted, loss)
+    lifted_loss_from_fourier = vqa.fourier_expansion()
+    loss_from_fourier = lambda p: lifted_loss_from_fourier(converter(p))
+
+    num_samples = 10
+    random_parameters = 2*np.pi*np.random.rand(num_samples, qc.num_parameters)
+
+    assert all([np.allclose(vqa.evaluate_loss_at(converter(p)), loss_from_fourier(p)) for p in random_parameters])
