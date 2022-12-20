@@ -18,8 +18,16 @@ def lift_duplicate_parameters(qc: QuantumCircuit):
             gate.params[0] = new_parameters[num_parameter]
             num_parameter += 1
 
-    parameter_converter = all_parameters_from_parameters_func(qc.parameters, qc.all_parameters)
+    parameter_converter_original = all_parameters_from_parameters_func(qc.parameters, qc.all_parameters)
 
     qc_lifted = QuantumCircuit(qc.num_qubits)
     qc_lifted.data = lifted_data
-    return qc_lifted, parameter_converter
+
+    qc_lifted_clifford = CliffordPhi.from_quantum_circuit(qc_lifted)
+    parameter_permutation = qc_lifted_clifford.num_instruction_from_num_parameter
+
+    def converter(p):
+        vals = parameter_converter_original(p)
+        return [vals[i] for i in parameter_permutation]
+
+    return qc_lifted, converter

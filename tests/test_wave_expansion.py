@@ -291,7 +291,7 @@ def test_full_fourier_reconstruction(num_qubits=2, num_parameters=3):
         _test_random_vqa_fourier_expansion(num_qubits, num_parameters, loss)
 
 
-def test_lifting_circuit(num_qubits=4, num_parametric_gates=10, num_duplicates=6):
+def test_lifting_circuit(num_qubits=4, num_parametric_gates=15, num_duplicates=2):
     qc = random_clifford_phi(num_qubits, num_parametric_gates, num_duplicates)
     qc_lifted, converter = lift_duplicate_parameters(qc)
 
