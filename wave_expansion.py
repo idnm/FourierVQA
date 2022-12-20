@@ -58,8 +58,12 @@ class CliffordPhiVQA:
         return combinations(range(num_parameters), order)
 
     def fourier_expansion(self, up_to_order=None):
+        max_order = self.circuit.num_parameters
         if up_to_order is None:
-            up_to_order = self.circuit.num_parameters
+            up_to_order = max_order
+
+        if up_to_order > max_order:
+            raise ValueError(f'Requested order higher than the maximal {max_order}.')
 
         if len(self.fourier_modes) <= up_to_order:
             self.compute_fourier_mode(up_to_order)
