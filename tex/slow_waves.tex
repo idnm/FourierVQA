@@ -66,7 +66,7 @@ And each summand in each term is is a homogeneous trigonometric polynomial of a 
 	&L(\phi_1,\phi_2)=A\cos\phi_1\cos\phi_2+B\cos{\phi_1}\sin{\phi_2}+C\sin{\phi_1}\cos{\phi_2}+D\sin{\phi_1}\sin{\phi_2}\\
 	&L(\phi_1,\phi_2,\phi_3)=A\cos{\phi_1}\cos{\phi_2}\cos{\phi_3}+\dots
 \end{align}
-\section{Coefficients in Fourier expansion from averages}
+\section{Coefficients in Fourier expansion from averages} \label{Fourier from averages}
 Note that 
 \begin{align}
 F_0=\Braket{L(\phi)}_\phi=\frac1{(2\pi)^M}\int_0^{2\pi}\prod_i^M d\phi_i\,\, L(\phi)=\frac1{2^M}\sum_{I\in [0, 1]^M} L(\phi=\pi I)=\frac1{2^M}\sum_{I\in [0,1]^M}\Braket{0|U_I^\dagger H U_I|0}\label{F0}
@@ -76,7 +76,7 @@ where to get the last expression we used $\int_0^{2\pi} \prod_i^Md\phi_i\,\, f_I
 &F_i(\phi_i)=\Braket{L(\phi)-L_0}_{\phi\neq\phi_i}\\	&F_{ij}(\phi_i,\phi_j)=\Braket{L(\phi)-L_1(\phi)-L_0}_{\phi\neq \phi_i,\phi_j}\\
 &F_{ijk}(\phi_i,\phi_j,\phi_k)=\dots
 \end{align}
-\section{Averages for Clifford+$\phi$ circuits}
+\section{Averages for Clifford+$\phi$ circuits} \label{clifford averages}
 For a general circuit computing the average requires $2^M$ evaluations of the loss function. For a class of circuits that consists only of Clifford gates and Pauli rotations computing averages can be done very efficiently.
 
 Introduce
@@ -97,4 +97,25 @@ Now, if there is an element in $P'$ such that $(-)^{PQ}=-1$ the whole sum is nec
 \begin{align}
 F_0=\begin{cases}\Braket{0|C^\dagger Q C|0},\quad \text{if } [P', Q]=0\\0,\quad \text{otherwise}\end{cases}
 \end{align}
+\section{An algorithm for computing the Fourier expansion}
+In \ref{Fourier from averages} we explained how to get Fourier coefficient from averages and in \ref{clifford averages} how to compute the averages for Clifford circuits. Here we piece these two together in an algorithms that reuses some of the computations from the previous steps to give a good time cost.
+
+\begin{itemize}
+	\item \textbf{Parallellization over Pauli terms.} The algorithm can be run concurrently over all the Pauli strings appearing in the Hamiltonian. We further restrict the single Pauli string.
+	\item \textbf{Data structures.} The circuit can be represented by a sequence of Clifford gates and Pauli gates, in the order they appear in the circuit. Each Pauli gate has a unique identifier, the index of the associated parameter. Loss is represented by a single Pauli string.
+	\item \textbf{Basic step.} To compute the average we take the loss Pauli string $Q$ and commute it through the Clifford gates to the beginning of the circuit. Once we encounter a Pauli gate that anticommutes with $Q$ we stop, since the average will be zero.  If all Pauli gates commute with the propagated $Q$ the final average is trivial to compute.
+	\item \textbf{Circuit reduction.} Assume we implemented the \textbf{basic step} for some circuit $C$, and next need to implement it for a circuit $C'$ that differs from $C$ by fixing some Pauli gate either to identity of a Clifford gate. There are two options.
+	\begin{itemize}
+		\item If we fix some $P=id$, the propagated $Q$ can be inherited by $C'$ from $C$. If the removed gate did was not the first Pauli gate that anti-commuted with $Q$ the average does not change. If the removed gate was the first Pauli gate to anti-commute with $Q$ we can propagate $Q$ further as in the \textbf{basic step.}
+		\item If we fixed $P\to \sqrt{P}$ and $P$ appears before the first Pauli gates that anti-commuted with $Q$ we should repeat the \textbf{basic step} starting from the new Clifford gate $\sqrt{P}$. Otherwise we just change the circuit data, but do not touch the propagated $Q$ and the average does not change.
+	\end{itemize}
+\item \textbf{Optimal sequence of reductions}
+\begin{enumerate}
+	\item  Zero-order Fourier mode is computed by the  \textbf{basic step} without a warm-start.
+	\item All coefficients in the first Fourier mode you get from single-angle reductions described above. Here the ancestor circuit is the original circuit itself. I see no way to use the data from one single-angle reduction to save on another single-angle reduction, they all look independent. So this looks optimal to me.
+	\item Assume we've computed $n$ Fourier modes, i.e. we have averages for all $n-$angle reductions, and now we need to find averages for all $(n+1)$-angle reductions. Each new reduction is a single-angle reduction from some circuit in the previous Fourier mode and we can use the basic reduction step.
+\end{enumerate}
+
+\end{itemize}
+
 \end{document}
