@@ -5,9 +5,145 @@ from typing import List
 import numpy as np
 from qiskit import QuantumCircuit, QiskitError
 from qiskit.circuit import ParameterExpression, Instruction, Gate, CircuitInstruction, Parameter
-from qiskit.circuit.library import RZZGate, RZGate, RYGate, RXGate, IGate
+from qiskit.circuit.library import RZZGate, RZGate, RYGate, RXGate, IGate, PauliEvolutionGate
 from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Statevector, DensityMatrix, SparsePauliOp, Operator, \
     pauli_basis
+
+
+class PauliCircuit:
+    def __init__(self, paulis, final_clifford=None, parameters=None):
+        self.paulis = paulis
+        self.final_clifford = final_clifford
+        self.parameters = parameters
+
+    @property
+    def num_qubits(self):
+        return self.paulis[0].num_qubits
+
+    @staticmethod
+    def from_parameterized_circuit(qc):
+        gates, parameters = clifford_pauli_data(qc)
+        pauli_gates, final_clifford = commute_all_cliffords_to_the_end(gates)
+        return PauliCircuit(pauli_gates, final_clifford, parameters)
+
+    def to_parameterized_circuit(self):
+        if self.parameters is not None:
+            parameters = self.parameters
+        else:
+            parameters = [Parameter(f'x{i}') for i in range(len(self.paulis))]
+
+        qc = QuantumCircuit(self.num_qubits)
+        for pauli, parameter in zip(self.paulis, parameters):
+            gate = PauliEvolutionGate(pauli, 1/2*parameter)
+            qc.append(gate, range(qc.num_qubits))
+        if self.final_clifford:
+            qc.append(self.final_clifford.to_instruction(), range(qc.num_qubits))
+
+        return qc
+
+
+def commute_all_cliffords_to_the_end(gates):
+    commuted_something = True
+    while commuted_something:
+        commuted_something, gates = commute_the_first_clifford(gates)
+    num_pauli_gates = len([True for gate_type, _, _ in gates if gate_type=='pauli'])
+    pauli_gates = [gate for _, gate, _ in gates[:num_pauli_gates]]
+    clifford_gates = gates[num_pauli_gates:]
+
+    num_qubits = pauli_gates[0].num_qubits
+    qc = QuantumCircuit(num_qubits)
+    for _, gate, qubits in clifford_gates:
+        qc.append(gate.to_instruction(), qubits)
+    final_clifford = Clifford.from_circuit(qc)
+    return pauli_gates, final_clifford
+
+
+def commute_the_first_clifford(gates):
+
+    for i in range(len(gates)-1):
+        gate_type, gate, qubits = gates[i]
+        next_gate_type, next_gate, next_qubits = gates[i+1]
+        if gate_type == 'clifford' and next_gate_type == 'pauli':
+            gates[i] = 'pauli', next_gate.evolve(gate, qubits), next_qubits
+            gates[i+1] = 'clifford', gate, qubits
+            commuted_something = True
+            break
+    else:
+        commuted_something = False
+
+    return commuted_something, gates
+
+
+def clifford_pauli_data(qc, parametric_to_pauli_dict=None):
+    """Unroll the circuit according to circuit.data and identify each gate either as a Clifford gate
+    or as a Pauli rotation."""
+
+    if not parametric_to_pauli_dict:
+        parametric_to_pauli_dict = {}
+    gates = []
+    parameters = []
+    for gate, qargs, cargs in qc.data:
+        qubits = [q._index for q in qargs]
+        try:
+            new_gate = Clifford(gate)
+            gate_type = 'clifford'
+        except (QiskitError, TypeError):
+            if not gate.is_parameterized():
+                raise ValueError(f'Gate {gate.name} is neither clifford nor parametric.')
+            if len(gate.params) != 1:
+                raise ValueError(f'Parametric gates must have a single parameter. Got gate {gate.name} with gate.params={gate.params})')
+            if gate.name in parametric_to_pauli_dict:
+                pauli = parametric_to_pauli_dict[gate.name]
+            else:
+                pauli = pauli_generator_from_parametric_gate(gate)
+                parametric_to_pauli_dict[gate.name] = pauli
+
+            parameter = gate.params[0]
+            parameters.append(parameter)
+            new_gate = full_pauli_generator(pauli, qubit_indices=qubits, num_qubits=qc.num_qubits)
+            qubits = list(range(qc.num_qubits))
+            gate_type = 'pauli'
+
+        gates.append((gate_type, new_gate, qubits))
+
+    return gates, parameters
+
+
+def pauli_generator_from_parametric_gate(gate):
+    gate = copy.deepcopy(gate)
+    gate.params = [Parameter('theta')]  # In case gate came with parameter like 0.5*Parameter('theta')
+    qc = QuantumCircuit(gate.num_qubits)
+    qc.append(gate, range(gate.num_qubits))
+
+    # Check that gate(pi) is a pauli gate.
+    gate_at_pi = Operator(qc.bind_parameters([np.pi])).data
+
+    for pauli in pauli_basis(gate.num_qubits):
+        if np.allclose(gate_at_pi, -1j * pauli.to_matrix()):
+            pauli = pauli
+            break
+    else:
+        raise ValueError(f'Gate {gate.name} at pi is not a pauli gate.')
+
+    # Check that gate(x) is exponential of the pauli gate for other parameters.
+    # This will fail e.g. for exp(i x (Z1+Z2)).
+    xx = np.linspace(0, 2 * np.pi, 19)
+    gate_values = np.array([Operator(qc.bind_parameters([x])).data for x in xx])
+    pauli_rotation_values = np.array([PauliRotation.matrix(pauli, x) for x in xx])
+
+    if not np.allclose(gate_values, pauli_rotation_values):
+        raise ValueError(f'Gate {gate.name} is not a Pauli rotation.')
+
+    return pauli
+
+
+def full_pauli_generator(pauli, qubit_indices, num_qubits):
+    short_generator = pauli.to_label()
+    generator = ['I'] * num_qubits
+    for label, q in zip(short_generator, qubit_indices):
+        generator[q] = label
+
+    return Pauli(''.join(generator)[::-1])
 
 
 class CliffordPhiVQA:

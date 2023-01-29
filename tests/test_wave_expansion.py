@@ -11,7 +11,7 @@ from qiskit.quantum_info import random_clifford, Operator, random_statevector, P
 
 from duplicate_utils import lift_duplicate_parameters
 from experiments_utils import Experiment
-from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial, CliffordPhiVQA, FourierMode
+from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial, CliffordPhiVQA, FourierMode, PauliCircuit
 
 
 def random_clifford_phi(num_qubits, num_parametric_gates, num_duplicate_parameters=0, seed=0):
@@ -32,7 +32,29 @@ def random_clifford_phi(num_qubits, num_parametric_gates, num_duplicate_paramete
 
         qc.append(parametric_gate(parameter), position)
 
-    return CliffordPhi.from_quantum_circuit(qc)
+    return qc
+
+
+def hilbert_schmidt_product(u, v):
+    num_qubits = int(np.log2(u.shape[0]))
+    return np.abs((u.conj() * v).sum())**2/4**num_qubits
+
+
+def parametric_circuits_are_equivalent(qc0, qc1):
+
+    np.random.seed(42)
+    random_parameters = np.random.rand(10, qc0.num_parameters)
+    return all([Operator(qc0.bind_parameters(p)).equiv(Operator(qc1.bind_parameters(p))) for p in random_parameters])
+
+
+def test_pauli_circuit_reconstruction(num_qubits=3, num_parametric_gates=4):
+    for num_qubits in range(1, 4):
+        for num_parametric_gates in range(1, 5):
+            qc = random_clifford_phi(num_qubits, num_parametric_gates)
+            pauli_qc = PauliCircuit.from_parameterized_circuit(qc)
+            qc_reconstruction = pauli_qc.to_parameterized_circuit()
+
+            assert parametric_circuits_are_equivalent(qc, qc_reconstruction)
 
 
 def reconstruct_circuit(qc0):
@@ -96,11 +118,6 @@ def test_loss_from_state():
     rho_matrix = np.outer(state.data, state.data.conj().T)
 
     assert np.allclose(rho_matrix, loss.hamiltonian.to_matrix())
-
-
-def hilbert_schmidt_product(u, v):
-    num_qubits = int(np.log2(u.shape[0]))
-    return np.abs((u.conj() * v).sum())**2/4**num_qubits
 
 
 def test_loss_from_unitary(num_qubits=2, num_parameters=6):
@@ -191,13 +208,6 @@ def test_pauli_root():
     gate, qargs, cargs = qc.data[0]
     pauli = PauliRotation.pauli_generator_from_gate(gate)
     assert pauli == Pauli('Z')
-
-
-def parametric_circuits_are_equivalent(qc0, qc1):
-
-    np.random.seed(42)
-    random_parameters = np.random.rand(10, qc0.num_parameters)
-    return all([Operator(qc0.bind_parameters(p)).equiv(Operator(qc1.bind_parameters(p))) for p in random_parameters])
 
 
 def test_fix_parameters(max_num_qubits=4, num_parameters=12):
@@ -317,5 +327,4 @@ def test_full_fourier_expansion_with_duplicate_parameters(
 
     num_samples = 10
     random_parameters = 2*np.pi*np.random.rand(num_samples, qc.num_parameters)
-
     assert all([np.allclose(vqa.evaluate_loss_at(converter(p)), loss_from_fourier(p)) for p in random_parameters])

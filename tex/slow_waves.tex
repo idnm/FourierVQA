@@ -22,18 +22,19 @@
 \voffset=-1.2in
 \hoffset= - 0.9in         
 \begin{document}
+\tableofcontents
 \section{Notation}
 \begin{itemize}
-\item
-\begin{align}
-	f_i(\phi)=\cos^{i-1}\phi\sin^\phi=\begin{cases} \cos\phi,\quad i=0\\\sin\phi,\quad i=1\end{cases}
-\end{align}
-\item
-\begin{align}
-	f_I(\phi)=\prod_{i\in I} f_{i}(\phi)
-\end{align}
 \item $n$ - number of qubits
 \item $M$ - number of parameters
+\item
+\begin{align}
+	f_i(\phi)=\cos^{1-i}\phi\,\,\sin^i\phi=\begin{cases} \cos\phi,\quad i=0\\\sin\phi,\quad i=1\end{cases}
+\end{align}
+\item
+\begin{align}
+	f_I(\phi)=\prod_{m=1}^M f_{I_m}(\phi_m)
+\end{align}
 \end{itemize}
 \section{PQC}
 Parametrized circuit with $M$ parameters
@@ -97,25 +98,66 @@ Now, if there is an element in $P'$ such that $(-)^{PQ}=-1$ the whole sum is nec
 \begin{align}
 F_0=\begin{cases}\Braket{0|C^\dagger Q C|0},\quad \text{if } [P', Q]=0\\0,\quad \text{otherwise}\end{cases}
 \end{align}
-\section{An algorithm for computing the Fourier expansion}
-In \ref{Fourier from averages} we explained how to get Fourier coefficient from averages and in \ref{clifford averages} how to compute the averages for Clifford circuits. Here we piece these two together in an algorithms that reuses some of the computations from the previous steps to give a good time cost.
+\section{Fourier expansion of Clifford+$\phi$ loss functions}
+Define 
+\begin{align}
+	\widehat{F}_H(\phi)=U^\dagger(\phi)HU(\phi)
+\end{align}
+We will assume that the loss function is a linear combination of Pauli strings $H=\sum_i c_i Q_i$, hence
+\begin{align}
+	\widehat{F}_{H}(\phi)=\sum c_i \widehat{F}_{Q_i}(\phi)
+\end{align}
+and focus on a single term $\widehat{F}_Q(\phi)$.
 
+Next, we will assume that there are no Clifford gates in the circuit, only Pauli rotations. This is no loss of generality, since every Clifford gate can be commuted to the end of the circuit and absorbed into a redefinition of $Q$. Therefore, the circuit we have is (note product in reverse order)
+\begin{align}
+	U(\phi)=\prod_{m=M}^0 e^{i P_m \frac{\phi_m}{2}}
+\end{align}
+Next we note that
+\begin{align}
+	e^{-\frac12iP\phi}Qe^{\frac12iP\phi}=\begin{cases}
+	Q,\quad PQ=QP\\ Q\cos\phi + iQP\sin\phi,\quad PQ=-QP
+	\end{cases}
+\end{align}
+We can use this relation to expand $\widehat{F}_Q(\phi)$ recursively. When $Q$ is sandwiched between the commuting Pauli rotations nothing happens and the corresponding angle is simply omitted. When $Q$ encounters an anti-commuting Pauli rotation a split occurs, and the order of Fourier terms increases.
+
+Let the of the computation be
+\begin{align}
+	\widehat{F}_Q(\phi)=\sum_s Q_s f_{I_s}(\phi)
+\end{align}
+where the sum is over non-trivial splits. We first note several properties of this expansion
 \begin{itemize}
-	\item \textbf{Parallellization over Pauli terms.} The algorithm can be run concurrently over all the Pauli strings appearing in the Hamiltonian. We further restrict the single Pauli string.
-	\item \textbf{Data structures.} The circuit can be represented by a sequence of Clifford gates and Pauli gates, in the order they appear in the circuit. Each Pauli gate has a unique identifier, the index of the associated parameter. Loss is represented by a single Pauli string.
-	\item \textbf{Basic step.} To compute the average we take the loss Pauli string $Q$ and commute it through the Clifford gates to the beginning of the circuit. Once we encounter a Pauli gate that anticommutes with $Q$ we stop, since the average will be zero.  If all Pauli gates commute with the propagated $Q$ the final average is trivial to compute.
-	\item \textbf{Circuit reduction.} Assume we implemented the \textbf{basic step} for some circuit $C$, and next need to implement it for a circuit $C'$ that differs from $C$ by fixing some Pauli gate either to identity of a Clifford gate. There are two options.
-	\begin{itemize}
-		\item If we fix some $P=id$, the propagated $Q$ can be inherited by $C'$ from $C$. If the removed gate did was not the first Pauli gate that anti-commuted with $Q$ the average does not change. If the removed gate was the first Pauli gate to anti-commute with $Q$ we can propagate $Q$ further as in the \textbf{basic step.}
-		\item If we fixed $P\to \sqrt{P}$ and $P$ appears before the first Pauli gates that anti-commuted with $Q$ we should repeat the \textbf{basic step} starting from the new Clifford gate $\sqrt{P}$. Otherwise we just change the circuit data, but do not touch the propagated $Q$ and the average does not change.
-	\end{itemize}
-\item \textbf{Optimal sequence of reductions}
-\begin{enumerate}
-	\item  Zero-order Fourier mode is computed by the  \textbf{basic step} without a warm-start.
-	\item All coefficients in the first Fourier mode you get from single-angle reductions described above. Here the ancestor circuit is the original circuit itself. I see no way to use the data from one single-angle reduction to save on another single-angle reduction, they all look independent. So this looks optimal to me.
-	\item Assume we've computed $n$ Fourier modes, i.e. we have averages for all $n-$angle reductions, and now we need to find averages for all $(n+1)$-angle reductions. Each new reduction is a single-angle reduction from some circuit in the previous Fourier mode and we can use the basic reduction step.
-\end{enumerate}
-
+	\item There can be at most $2^M$ terms, in case a split occurs each time.
+	\item The following weighted sum is invariant
+	\begin{align}
+		\sum_s 2^{M-|s|}=2^M
+	\end{align}
+	For example, if the is a term with $|s|=0$ splits (corresponding to the lowest Fourier mode) no other terms are present in the expansion. If there is a term with a single split $|s|=1$ there can be at most $2^{M}/2$ other terms, etc.
 \end{itemize}
+\section{Fourier expansion as approximation}
+Now consider the loss function $F_Q(\phi)=\Braket{0|\widehat{F}_Q(\phi)|0}$ and its $L^2$ norm
+\begin{align}
+	F_Q=\sum_s \Braket{0|Q_s|0} f_{I_s}(\phi)\\
+	||F_Q(\phi)||^2=\frac{1}{(2\pi)^M}\int \prod_{i=1^M}d\phi_i|F_Q(\phi)|^2=\sum_s 2^{-|s|}|\Braket{0|Q_s|0}|^2  \label{L2 norm}
+\end{align}
+The last equation follows the fact that all $f_{I_s}$ are orthogonal and satisfy $||f_{I_s}(\phi)||^2=2^{-|s|}$.
+Thus, the lower the order of the Fourier mode the mode it contributes to the $L^2$ norm of $F_Q(\phi)$, provided the corresponding coefficient $\braket{0|Q_s|0}$ is non-zero.
+
+It follows from \eqref{L2 norm} that the norm of $F_Q(\phi)$ is bounded 
+\begin{align}
+	||F_Q(\phi)||^2\le 1
+\end{align}
+and the bound is saturated if all matrix elements $\braket{0|Q_s|0}$ are non-zero. Eq. \eqref{L2 norm} also shows that generally Fourier terms of the lower order contribute exponentially more. Hence the is a possibility that restricting to lower order Fourier terms one can obtain good approximation of the loss function. Although we can not guarantee to get a good approximation in advance, we can control and improve the bound during the computation.
+
+For example, assume we found a term with a single split. We can then bound the remaining norm by $||\delta F||\le\frac12$. If the term has non-zero coefficient, we have already accounted for $50\%$ of the norm! 
+
+So, it would be very interesting to experiment with these things and see if it is possible to get a good approximation in practice.
+\section{Algorithms and data structure}
+We can visualize computation of the Fourier expansion as a tree. The root corresponds to the original circuit and is described by a sequence of Pauli matrices $P_M\dots P_1$ and an observable $Q$. Branching corresponds to hitting an anticommuting Pauli rotation. A branch terminates if no Pauli rotations are left. The computation is simply the construction of such a tree. We can define two strategies for doing that.
+
+\textbf{Level expansion.} At each iteration we branch from all of the existing non-terminal nodes. This corresponds to going one level up in the Fourier expansion.
+
+\textbf{Greedy expansion.} At each iteration we branch only from the node with the smallest number of Pauli rotations left.
+
 
 \end{document}
