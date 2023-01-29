@@ -140,7 +140,7 @@ def pauli_generator_from_parametric_gate(gate):
 def full_pauli_generator(pauli, qubit_indices, num_qubits):
     short_generator = pauli.to_label()
     generator = ['I'] * num_qubits
-    for label, q in zip(short_generator, qubit_indices):
+    for label, q in zip(short_generator, qubit_indices[::-1]):
         generator[q] = label
 
     return Pauli(''.join(generator)[::-1])

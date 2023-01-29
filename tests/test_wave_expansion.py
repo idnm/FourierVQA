@@ -49,7 +49,7 @@ def parametric_circuits_are_equivalent(qc0, qc1):
 
 def test_pauli_circuit_reconstruction(num_qubits=3, num_parametric_gates=4):
     for num_qubits in range(1, 4):
-        for num_parametric_gates in range(1, 5):
+        for num_parametric_gates in range(1, 15, 3):
             qc = random_clifford_phi(num_qubits, num_parametric_gates)
             pauli_qc = PauliCircuit.from_parameterized_circuit(qc)
             qc_reconstruction = pauli_qc.to_parameterized_circuit()
