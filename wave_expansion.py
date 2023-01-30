@@ -10,38 +10,6 @@ from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Statevector, D
     pauli_basis
 
 
-class PauliCircuit:
-    def __init__(self, paulis, final_clifford=None, parameters=None):
-        self.paulis = paulis
-        self.final_clifford = final_clifford
-        self.parameters = parameters
-
-    @property
-    def num_qubits(self):
-        return self.paulis[0].num_qubits
-
-    @staticmethod
-    def from_parameterized_circuit(qc):
-        gates, parameters = clifford_pauli_data(qc)
-        pauli_gates, final_clifford = commute_all_cliffords_to_the_end(gates)
-        return PauliCircuit(pauli_gates, final_clifford, parameters)
-
-    def to_parameterized_circuit(self):
-        if self.parameters is not None:
-            parameters = self.parameters
-        else:
-            parameters = [Parameter(f'x{i}') for i in range(len(self.paulis))]
-
-        qc = QuantumCircuit(self.num_qubits)
-        for pauli, parameter in zip(self.paulis, parameters):
-            gate = PauliEvolutionGate(pauli, 1/2*parameter)
-            qc.append(gate, range(qc.num_qubits))
-        if self.final_clifford:
-            qc.append(self.final_clifford.to_instruction(), range(qc.num_qubits))
-
-        return qc
-
-
 def commute_all_cliffords_to_the_end(gates):
     commuted_something = True
     while commuted_something:
@@ -144,6 +112,170 @@ def full_pauli_generator(pauli, qubit_indices, num_qubits):
         generator[q] = label
 
     return Pauli(''.join(generator)[::-1])
+
+
+class PauliCircuit:
+    def __init__(self, paulis, final_clifford=None, parameters=None):
+        self.paulis = paulis
+        self.final_clifford = final_clifford
+        self.parameters = parameters
+
+    @property
+    def num_qubits(self):
+        return self.paulis[0].num_qubits
+
+    @staticmethod
+    def from_parameterized_circuit(qc):
+        gates, parameters = clifford_pauli_data(qc)
+        pauli_gates, final_clifford = commute_all_cliffords_to_the_end(gates)
+        return PauliCircuit(pauli_gates, final_clifford, parameters)
+
+    def to_parameterized_circuit(self):
+        if self.parameters is not None:
+            parameters = self.parameters
+        else:
+            parameters = [Parameter(f'x{i}') for i in range(len(self.paulis))]
+
+        qc = QuantumCircuit(self.num_qubits)
+        for pauli, parameter in zip(self.paulis, parameters):
+            gate = PauliEvolutionGate(pauli, 1/2*parameter)
+            qc.append(gate, range(qc.num_qubits))
+        if self.final_clifford:
+            qc.append(self.final_clifford.to_instruction(), range(qc.num_qubits))
+
+        return qc
+
+    def expectation_value(self, observable, parameters):
+        qc = self.to_parameterized_circuit().bind_parameters(parameters)
+        state = Statevector(qc)
+        return state.expectation_value(observable)
+
+
+class FourierComputation:
+    def __init__(self, pauli_circuit, pauli_observable):
+        self.pauli_circuit = pauli_circuit
+        self.original_observable = pauli_observable
+        self.paulis = self.pauli_circuit.paulis
+        self.observable = self.original_observable.evolve(self.pauli_circuit.final_clifford)
+        self.complete_nodes = []
+        self.incomplete_nodes = []
+        self.type = None
+        self.num_iterations = 0
+
+    def run_sequential(self, max_order=None):
+        self._check_type('sequential')
+
+        # Initialize the computation if it wasn't.
+        if not self.incomplete_nodes and not self.complete_nodes:
+            root = FourierComputationNode(len(self.paulis), self.observable, ())
+            root.remove_commuting_paulis(self.paulis)
+            if root.is_complete:
+                self.complete_nodes = [root]
+            else:
+                self.incomplete_nodes = [root]
+            self.num_iterations = 1
+
+        # If not provided, set max order to the number of parameters.
+        if not max_order:
+            max_order = len(self.paulis)
+
+        # If iterations exist number adjust the number of new iterations
+        num_iterations = max_order-self.num_iterations
+        for _ in range(num_iterations):
+            self.num_iterations += 1
+            self.incomplete_nodes, self.complete_nodes = self.iteration_sequential(
+                self.incomplete_nodes, self.complete_nodes)
+            if len(self.incomplete_nodes) == 0:
+                print('Computation complete.')
+                break
+
+    def iteration_sequential(self, incomplete_nodes, complete_nodes):
+        if not incomplete_nodes:
+            return [], complete_nodes
+
+        new_incomplete_nodes = []
+        for node in incomplete_nodes:
+            incomplete_nodes, completed_nodes = node.branch_and_remove_commuting(self.paulis)
+            complete_nodes.extend(completed_nodes)
+            new_incomplete_nodes.extend(incomplete_nodes)
+        return new_incomplete_nodes, complete_nodes
+
+    def _check_type(self, t):
+        if self.type is None:
+            self.type = t
+        else:
+            assert self.type == t, f'Continuing computation of a different type {self.type} is not allowed.'
+
+    def evaluate_at(self, parameters):
+        state0 = Statevector(QuantumCircuit(self.pauli_circuit.num_qubits))
+        res = 0
+        for node in self.complete_nodes:
+            res += state0.expectation_value(node.observable)*node.monomial(parameters)
+
+        return res
+
+
+class FourierComputationNode:
+    def __init__(self, num_paulis, observable, branch_history):
+        self.num_paulis = num_paulis
+        self.observable = observable
+        self.branch_history = branch_history
+
+    @property
+    def is_complete(self):
+        return self.num_paulis == 0
+
+    def __repr__(self):
+        return f'{self.num_paulis} {self.observable} {self.branch_history}'
+
+    def remove_commuting_paulis(self, paulis):
+        paulis = paulis[:self.num_paulis]
+        num_commuting = 0
+        for pauli in paulis[::-1]:
+            if pauli.commutes(self.observable):
+                num_commuting += 1
+            else:
+                break
+        self.num_paulis -= num_commuting
+
+    def branch(self, all_paulis):
+
+        node_cos = FourierComputationNode(
+            self.num_paulis-1,
+            self.observable,
+            self.branch_history+((self.num_paulis-1, 0), ))
+
+        node_sin = FourierComputationNode(
+            self.num_paulis - 1,
+            1j * self.observable.compose(all_paulis[self.num_paulis-1]),
+            self.branch_history + ((self.num_paulis-1, 1), ))
+
+        return node_cos, node_sin
+
+    def branch_and_remove_commuting(self, all_paulis):
+        nodes = self.branch(all_paulis)
+        for node in nodes:
+            node.remove_commuting_paulis(all_paulis)
+
+        incomplete_nodes = []
+        complete_nodes = []
+        for node in nodes:
+            if node.is_complete:
+                complete_nodes.append(node)
+            else:
+                incomplete_nodes.append(node)
+        return incomplete_nodes, complete_nodes
+
+    def monomial(self, parameters):
+        res = 1
+        for num_parameter, branch in self.branch_history:
+            x = parameters[num_parameter]
+            if branch == 0:
+                res *= np.cos(x)
+            elif branch == 1:
+                res *= np.sin(x)
+
+        return res
 
 
 class CliffordPhiVQA:

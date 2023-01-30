@@ -7,11 +7,12 @@ from mynimize import OptOptions
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
 from qiskit.circuit.library import RXGate, RYGate, RZGate, RZZGate, RXXGate, RZXGate
-from qiskit.quantum_info import random_clifford, Operator, random_statevector, Pauli, random_unitary
+from qiskit.quantum_info import random_clifford, Operator, random_statevector, Pauli, random_unitary, random_pauli
 
 from duplicate_utils import lift_duplicate_parameters
 from experiments_utils import Experiment
-from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial, CliffordPhiVQA, FourierMode, PauliCircuit
+from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial, CliffordPhiVQA, FourierMode, \
+    PauliCircuit, FourierComputation
 
 
 def random_clifford_phi(num_qubits, num_parametric_gates, num_duplicate_parameters=0, seed=0):
@@ -55,6 +56,36 @@ def test_pauli_circuit_reconstruction(num_qubits=3, num_parametric_gates=4):
             qc_reconstruction = pauli_qc.to_parameterized_circuit()
 
             assert parametric_circuits_are_equivalent(qc, qc_reconstruction)
+
+
+def test_fourier_computation():
+    for num_qubits in range(1, 5):
+        for num_parameters in range(1, 6):
+
+            qc = random_clifford_phi(num_qubits, num_parameters)
+            pauli_circuit = PauliCircuit.from_parameterized_circuit(qc)
+            observable = random_pauli(num_qubits)
+
+            fourier_computation = FourierComputation(pauli_circuit, observable)
+            fourier_computation.run_sequential(num_parameters+1)
+
+            params = np.random.rand(num_parameters)
+            assert np.allclose(
+                pauli_circuit.expectation_value(observable, params),
+                fourier_computation.evaluate_at(params)
+            )
+
+
+def test_expectation():
+    num_qubits = 4
+    num_parameters = 10
+
+    qc = random_clifford_phi(num_qubits, num_parameters)
+    pauli_circuit = PauliCircuit.from_parameterized_circuit(qc)
+    observable = Pauli('XYZY')
+
+    params = np.random.rand(num_parameters)
+    print(pauli_circuit.expectation(observable, params))
 
 
 def reconstruct_circuit(qc0):
