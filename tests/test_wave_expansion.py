@@ -12,7 +12,7 @@ from qiskit.quantum_info import random_clifford, Operator, random_statevector, P
 from duplicate_utils import lift_duplicate_parameters
 from experiments_utils import Experiment
 from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial, CliffordPhiVQA, FourierMode, \
-    PauliCircuit, FourierComputation
+    PauliCircuit, FourierComputation, PauliSpan, PauliSpace
 
 
 def random_clifford_phi(num_qubits, num_parametric_gates, num_duplicate_parameters=0, seed=0):
@@ -58,22 +58,53 @@ def test_pauli_circuit_reconstruction(num_qubits=3, num_parametric_gates=4):
             assert parametric_circuits_are_equivalent(qc, qc_reconstruction)
 
 
-def test_fourier_computation():
+def test_fourier_computation_plain():
+
     for num_qubits in range(1, 5):
         for num_parameters in range(1, 6):
-
             qc = random_clifford_phi(num_qubits, num_parameters)
             pauli_circuit = PauliCircuit.from_parameterized_circuit(qc)
             observable = random_pauli(num_qubits)
 
             fourier_computation = FourierComputation(pauli_circuit, observable)
-            fourier_computation.run_sequential(num_parameters+1)
+            fourier_computation.run(check_admissible=False)
 
             params = np.random.rand(num_parameters)
             assert np.allclose(
                 pauli_circuit.expectation_value(observable, params),
                 fourier_computation.evaluate_at(params)
             )
+
+
+def test_fourier_computation_with_filtering():
+    for num_qubits in range(1, 5):
+        for num_parameters in range(1, 6):
+
+            print('\n nnn')
+            print(num_qubits, num_parameters)
+
+            qc = random_clifford_phi(num_qubits, num_parameters)
+            pauli_circuit = PauliCircuit.from_parameterized_circuit(qc)
+            observable = random_pauli(num_qubits)
+
+            fourier_computation = FourierComputation(pauli_circuit, observable)
+            fourier_computation.run(check_admissible=True)
+
+            params = np.random.rand(num_parameters)
+            assert np.allclose(
+                pauli_circuit.expectation_value(observable, params),
+                fourier_computation.evaluate_at(params)
+            )
+
+
+def test_normal_form():
+    paulis = [Pauli('XYZ'[::-1]), Pauli('ZXX'[::-1]), Pauli('XXX'[::-1])]
+    independent, dependent, normal_form, decomposition_m = PauliSpace.basis_and_decompositions(paulis)
+    print('\n')
+    print('ind', independent)
+    print('d', dependent)
+    print('normal', np.array(normal_form))
+    print('dec', np.array(decomposition_m))
 
 
 def test_expectation():

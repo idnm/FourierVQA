@@ -159,5 +159,29 @@ We can visualize computation of the Fourier expansion as a tree. The root corres
 
 \textbf{Greedy expansion.} At each iteration we branch only from the node with the smallest number of Pauli rotations left.
 
+\section{Simple random model}
+To accounts for the full Fourier series we need exponentially many terms, $2^M$. A question is how many parameters do we need in practice to get a good approximation? Let us try to introduce a simple probabilistic model to make estimates.
+
+We assume that $M$ Pauli rotations $P_1,\dots, P_M$ are chosen at random, a so is $Q$. Then, the probability of $Q$ commuting or anti-commuting with either of $P_i$ is $\frac12$. We now ask, what is the average number of terms $n_{m,M}$ at each level $m$ for an $M$ parameter circuit? The following simple recurrence relation holds
+\begin{align}
+	n_{m,M+1}=\frac12 n_{m, M}+n_{m-1,M}
+\end{align}
+When we add an additional $P_{M+1}$, with probability $\frac12$ it commutes with $Q$ and the number of terms is the same as for the sequence without $P_{M+1}$. If $P_{M+1}$ anti-commutes with $Q$ we instead get two subtrees with $M$ parameters where we need to check how many terms are at level $m-1$. The solution to this recurrence equation is
+\begin{align}
+	n_{m,M}=2^{m-M} C_M^m 
+\end{align}
+The total average number of terms
+\begin{align}
+	n_M=\sum_{m=0}^Mn_{n,m}=\left(\frac32\right)^M
+\end{align}
+It is less that the maximal number $2^M$ but still exponential. Since the norm per term decreases as $2^{-m}$ the average contribution to the norm per level is given by
+\begin{align}
+	\nu_{m,M}=2^{-M}C_M^m,\quad \sum_{m=0}^M\nu_{m,M}=1
+\end{align}
+Because $C_M^m$ is a symmetric function wrt $m\to M-m$ it is clear that to account for $50\%$ of the norm we need to include $\sim m\sim \frac{M}{2}$ Fourier orders. How many Fourier terms will that include? I'm not sure about exact asymptotic, but roughly
+\begin{align}
+	n_{\frac{M}{2},M}\sim \sqrt{2}^M
+\end{align}
+In the large $M$ limit this is an exponentially small fraction of all parameters, yet containing exponentially many terms.
 
 \end{document}

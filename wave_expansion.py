@@ -1,13 +1,16 @@
 import copy
+from functools import reduce
 from itertools import product, combinations
 from typing import List
 
 import numpy as np
+from matplotlib import pyplot as plt
 from qiskit import QuantumCircuit, QiskitError
 from qiskit.circuit import ParameterExpression, Instruction, Gate, CircuitInstruction, Parameter
 from qiskit.circuit.library import RZZGate, RZGate, RYGate, RXGate, IGate, PauliEvolutionGate
 from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Statevector, DensityMatrix, SparsePauliOp, Operator, \
-    pauli_basis
+    pauli_basis, random_pauli
+from scipy.special import binom
 
 
 def commute_all_cliffords_to_the_end(gates):
@@ -130,6 +133,14 @@ class PauliCircuit:
         pauli_gates, final_clifford = commute_all_cliffords_to_the_end(gates)
         return PauliCircuit(pauli_gates, final_clifford, parameters)
 
+    @staticmethod
+    def random(num_qubits, num_paulis, seed=0):
+        np.random.seed(seed)
+        seeds = np.random.randint(0, 10000, size=num_paulis)
+        paulis = [random_pauli(num_qubits, seed=s) for s in seeds]
+
+        return PauliCircuit(paulis)
+
     def to_parameterized_circuit(self):
         if self.parameters is not None:
             parameters = self.parameters
@@ -151,53 +162,191 @@ class PauliCircuit:
         return state.expectation_value(observable)
 
 
+class PauliSpace:
+    def __init__(self, paulis):
+        self.paulis = paulis
+
+        self.independent_paulis = None
+        self.dependent_paulis = None
+        self.normal_form = None
+        self.decomposition_matrix = None
+
+    def list_decomposition(self, decomposition):
+        print('this is computed wrongly!')
+        return [self.independent_paulis[i] for i in decomposition]
+
+    def contains(self, decomposition, num_pauli):
+        return num_pauli in self.list_decomposition(decomposition)
+
+    def construct(self):
+        independent_paulis, dependent_paulis, normal_form, decomposition_matrix = self.basis_and_decompositions(self.paulis)
+        self.independent_paulis = independent_paulis
+        self.dependent_paulis = dependent_paulis
+        self.normal_form = normal_form
+        self.decomposition_matrix = decomposition_matrix
+
+    def is_independent(self, num_pauli):
+        return num_pauli in self.independent_paulis
+
+    def requires_paulis(self, decomposition):
+        if np.all(decomposition == 0):
+            return 0
+        nonzero, = decomposition.nonzero()
+        last_nonzero = nonzero[-1]
+        return self.independent_paulis[last_nonzero]
+
+    def compute_decomposition(self, observable, num_paulis):
+        normal_form = self.normal_form[:num_paulis]
+        decomposition_matrix = self.decomposition_matrix[:num_paulis]
+        normal_form, decomposition_matrix = self.extend_normal_form(normal_form, decomposition_matrix, observable.x)
+        return decomposition_matrix[-1]
+
+    @property
+    def dim(self):
+        return self.paulis[0].num_qubits
+
+    @staticmethod
+    def basis_and_decompositions(paulis):
+        paulis_x = [pauli.x for pauli in paulis]
+
+        independent_paulis = []
+        dependent_paulis = []
+
+        normal_form = []
+        decomposition_matrix = []
+
+        # Find first non-zero pauli.
+        for n, pauli in enumerate(paulis_x):
+            if np.all(pauli == 0):
+                dependent_paulis.append(n)
+
+                normal_form.append(np.zeros(len(pauli), dtype=bool))
+                decomposition_matrix.append(np.zeros(len(pauli), dtype=bool))
+            else:
+                independent_paulis.append(n)
+
+                d = np.zeros(len(pauli), dtype=bool)
+                d[0] = True
+
+                normal_form.append(pauli)
+                decomposition_matrix.append(d)
+                break
+        else:
+            raise ValueError('No non-trivial paulis provided.')
+
+        for n, pauli in list(enumerate(paulis_x))[independent_paulis[0]+1:]:
+
+            normal_form, decomposition_matrix = PauliSpace.extend_normal_form(normal_form, decomposition_matrix, pauli)
+
+            if np.all(normal_form[-1] == 0):
+                dependent_paulis.append(n)
+            else:
+                independent_paulis.append(n)
+                decomposition_matrix[-1][len(independent_paulis)-1] = True
+
+            if len(independent_paulis) == len(pauli):
+                break
+
+        return independent_paulis, dependent_paulis, normal_form, decomposition_matrix
+
+    @staticmethod
+    def extend_normal_form(normal_form, decomposition_matrix, pauli):
+        pauli = copy.deepcopy(pauli)
+
+        nonzero_rows = []
+        starting_indices = []
+        for n, row in enumerate(normal_form):
+            if not np.all(row == 0):
+                (i,) = row.nonzero()
+                starting_indices.append(i[0])
+                nonzero_rows.append(n)
+
+        decomposition = np.zeros(len(pauli), dtype=bool)
+        for i, n_row in sorted(zip(starting_indices, nonzero_rows)):
+            if pauli[i]:
+                pauli ^= normal_form[n_row]
+                decomposition ^= decomposition_matrix[n_row]
+
+        return normal_form+[pauli], decomposition_matrix+[decomposition]
+
+    @property
+    def num_paulis(self):
+        return len(self.paulis)
+
+    def update_decomposition(self, decomposition, num_pauli):
+        if decomposition is None:
+            return None
+        return decomposition ^ self.decomposition_matrix[num_pauli]
+
+    def rank(self, up_to_pauli_num):
+        return len([n for n in self.independent_paulis if n <= up_to_pauli_num])
+
+
 class FourierComputation:
     def __init__(self, pauli_circuit, pauli_observable):
         self.pauli_circuit = pauli_circuit
         self.original_observable = pauli_observable
-        self.paulis = self.pauli_circuit.paulis
-        self.observable = self.original_observable.evolve(self.pauli_circuit.final_clifford)
+        pauli_space = PauliSpace(pauli_circuit.paulis)
+        pauli_space.construct()
+        self.pauli_space = pauli_space
+        if self.pauli_circuit.final_clifford:
+            self.observable = self.original_observable.evolve(self.pauli_circuit.final_clifford)
+        else:
+            self.observable = self.original_observable
         self.complete_nodes = []
         self.incomplete_nodes = []
         self.type = None
         self.num_iterations = 0
 
-    def run_sequential(self, max_order=None):
-        self._check_type('sequential')
+    def run(self, check_admissible=True, max_order=None):
 
         # Initialize the computation if it wasn't.
         if not self.incomplete_nodes and not self.complete_nodes:
-            root = FourierComputationNode(len(self.paulis), self.observable, ())
-            root.remove_commuting_paulis(self.paulis)
+            root = FourierComputationNode(self.pauli_space.num_paulis, self.observable, ())
+            root.remove_commuting_paulis(self.pauli_space)
             if root.is_complete:
                 self.complete_nodes = [root]
             else:
                 self.incomplete_nodes = [root]
-            self.num_iterations = 1
+            self.num_iterations = 0
 
         # If not provided, set max order to the number of parameters.
         if not max_order:
-            max_order = len(self.paulis)
+            max_order = self.pauli_space.num_paulis
 
         # If iterations exist number adjust the number of new iterations
         num_iterations = max_order-self.num_iterations
+
+        # Run recursive algorithm. Each iteration computes all Fourier terms of at the next order.
         for _ in range(num_iterations):
             self.num_iterations += 1
             self.incomplete_nodes, self.complete_nodes = self.iteration_sequential(
-                self.incomplete_nodes, self.complete_nodes)
+                self.incomplete_nodes, self.complete_nodes, check_admissible)
             if len(self.incomplete_nodes) == 0:
-                print('Computation complete.')
                 break
 
-    def iteration_sequential(self, incomplete_nodes, complete_nodes):
+    # def is_admissible(self, num_paulis, observable):
+    #     """Test if an observable can be represented as a product of first `num_paulis` pauli operators."""
+    #
+    #     # If the remaining number of pauli operators is enough for full rank.
+    #     if num_paulis >= len(self.pauli_echelons):
+    #         return True
+    #
+    #     pauli_echelon = self.pauli_echelons[num_paulis]
+    #
+    #     return is_linearly_dependent(projection_x(observable), pauli_echelon)
+
+    def iteration_sequential(self, incomplete_nodes, complete_nodes, check_admissibility):
         if not incomplete_nodes:
             return [], complete_nodes
 
         new_incomplete_nodes = []
         for node in incomplete_nodes:
-            incomplete_nodes, completed_nodes = node.branch_and_remove_commuting(self.paulis)
-            complete_nodes.extend(completed_nodes)
+            incomplete_nodes, completed_nodes = node.branch_and_refine(self.pauli_space, check_admissibility)
+
             new_incomplete_nodes.extend(incomplete_nodes)
+            complete_nodes.extend(completed_nodes)
+
         return new_incomplete_nodes, complete_nodes
 
     def _check_type(self, t):
@@ -214,22 +363,46 @@ class FourierComputation:
 
         return res
 
+    def order_statistics(self):
+        M = len(self.paulis)
+        orders = [node.order for node in self.complete_nodes]
+        return [orders.count(m) for m in range(M + 1)]
+
+    def norm_statistics(self):
+        return [n / (2 ** m) for m, n in enumerate(self.order_statistics())]
+
+    def visualize(self):
+        M = len(self.paulis)
+
+        plt.scatter(range(M + 1), np.array(self.order_statistics()) / (3 / 2) ** M)
+        plt.scatter(range(M + 1), self.norm_statistics())
+
+        plt.plot([binom(M, m) * 2 ** (m - M) / (3 / 2) ** M for m in range(M + 1)], linestyle='--')
+        plt.plot([binom(M, m) * 2 ** (-M) for m in range(M + 1)], linestyle='--')
+
 
 class FourierComputationNode:
     def __init__(self, num_paulis, observable, branch_history):
         self.num_paulis = num_paulis
         self.observable = observable
         self.branch_history = branch_history
+        self.is_admissible = None
+        self.observable_decomposition = None
+
+    @property
+    def order(self):
+        return len(self.branch_history)
 
     @property
     def is_complete(self):
+        # The node is complete is no Paulis remain.
         return self.num_paulis == 0
 
     def __repr__(self):
         return f'{self.num_paulis} {self.observable} {self.branch_history}'
 
-    def remove_commuting_paulis(self, paulis):
-        paulis = paulis[:self.num_paulis]
+    def remove_commuting_paulis(self, pauli_space):
+        paulis = pauli_space.paulis[:self.num_paulis]
         num_commuting = 0
         for pauli in paulis[::-1]:
             if pauli.commutes(self.observable):
@@ -238,24 +411,70 @@ class FourierComputationNode:
                 break
         self.num_paulis -= num_commuting
 
-    def branch(self, all_paulis):
-
+    def branch_cos(self, pauli_space):
         node_cos = FourierComputationNode(
             self.num_paulis-1,
             self.observable,
             self.branch_history+((self.num_paulis-1, 0), ))
+        node_cos.observable_decomposition = self.observable_decomposition
+        return node_cos
 
+    def branch_sin(self, pauli_space):
         node_sin = FourierComputationNode(
             self.num_paulis - 1,
-            1j * self.observable.compose(all_paulis[self.num_paulis-1]),
+            1j * self.observable.compose(pauli_space.paulis[self.num_paulis-1]),
             self.branch_history + ((self.num_paulis-1, 1), ))
+        decomposition = pauli_space.update_decomposition(self.observable_decomposition, self.num_paulis-1)
+        node_sin.observable_decomposition = decomposition
+        return node_sin
 
-        return node_cos, node_sin
+    def branch_and_refine(self, pauli_space, check_admissibility):
 
-    def branch_and_remove_commuting(self, all_paulis):
-        nodes = self.branch(all_paulis)
+        # Check admissibility of the node and its branches.
+
+        cos_admissible = True
+        sin_admissible = True
+
+        # If checking for admissibility and the rank of remaining Paulis is not full.
+        if check_admissibility and pauli_space.rank(self.num_paulis) < pauli_space.dim:
+            self.is_admissible = False
+
+            # If the observable was not decomposed before, decompose it now.
+            if self.observable_decomposition is None:
+                self.observable_decomposition = pauli_space.compute_decomposition(self.observable, self.num_paulis)
+
+            # If decomposition was successful.
+            if self.observable_decomposition is not None:
+                # If the number of available pauli matrices enough for decomposition, the node is admissible.
+                if pauli_space.requires_paulis(self.observable_decomposition) <= self.num_paulis:
+                    self.is_admissible = True
+
+            # If the node is not admissible, in the end, abort the computation.
+            if not self.is_admissible:
+                complete_nodes = [self]
+                incomplete_nodes = []
+                return incomplete_nodes, complete_nodes
+
+            # If the branching Pauli is dependent, both branches are admissible.
+            # If it is independent a single branch is admissible.
+            if not pauli_space.is_independent(self.num_paulis):
+
+                # If observable requires the branching Pauli in its decomposition the cos branch is not admissible.
+                if pauli_space.contains(self.observable_decomposition, self.num_paulis):
+                    cos_admissible = False
+                # Else the sin branch is not admissible.
+                else:
+                    sin_admissible = False
+
+        # Branch and remove commuting paulis from each branch.
+        nodes = []
+        if cos_admissible:
+            nodes.append(self.branch_cos(pauli_space))
+        if sin_admissible:
+            nodes.append(self.branch_sin(pauli_space))
+
         for node in nodes:
-            node.remove_commuting_paulis(all_paulis)
+            node.remove_commuting_paulis(pauli_space)
 
         incomplete_nodes = []
         complete_nodes = []
@@ -264,6 +483,7 @@ class FourierComputationNode:
                 complete_nodes.append(node)
             else:
                 incomplete_nodes.append(node)
+
         return incomplete_nodes, complete_nodes
 
     def monomial(self, parameters):
@@ -718,3 +938,90 @@ class Loss:
         return qc
 
 
+def add_row_to_echelon(w, m):
+    for row in m:
+        if np.all(row == 0):
+            continue
+        i, = row.nonzero()
+        i = i[0]
+        if w[i]:
+            w += row
+    w %= 2
+
+    if not np.all(w == 0):
+        i, = w.nonzero()[0]
+        for n, row in enumerate(m):
+            if row[i]:
+                m[n] = (row + w) % 2
+
+    return np.concatenate([m, np.array([w])])
+
+
+def is_linearly_dependent(pauli_x, pauli_echelon):
+    # Pauli can be expanded into existing ones if it becomes zero in the echelon form.
+    m = add_row_to_echelon(pauli_x, pauli_echelon)
+    return np.all(m[-1] == 0)
+
+
+class PauliSpan:
+    def __init__(self, paulis):
+        self.num_qubits = len(paulis[0])
+        self.paulis = paulis
+        self.matrix_form = np.array([self.projection_x(pauli) for pauli in self.paulis])
+        self.normal_form = None
+        self.starting_indices = None
+
+    @staticmethod
+    def projection_x(pauli):
+        return pauli.x
+
+    @staticmethod
+    def add_row_to_normal_form(normal_form, starting_indices, new_row):
+
+        # remove Nones
+        rows = [row for row, si in zip(normal_form, starting_indices) if si is not None]
+        indices = [si for si in starting_indices if si is not None]
+
+        # sort
+        rows = [row for _, row in sorted(zip(indices, rows))]
+        indices = sorted(indices)
+
+        # incomplete gaussian elimination
+        for i, row in zip(indices, rows):
+            if new_row[i]:
+                new_row ^= row
+
+        if not np.all(new_row == 0):
+            i_last, = new_row.nonzero()
+            i_last = i_last[0]
+        else:
+            i_last = None
+
+        return np.concatenate([normal_form, np.array([new_row])]), starting_indices+[i_last]
+
+    def compute_normal_form(self):
+        matrix_form = self.matrix_form.copy()
+        m0 = matrix_form[0]
+        normal_form = np.array([m0])
+
+        if not np.all(m0 == 0):
+            i0, = m0.nonzero()
+            i0 = i0[0]
+        else:
+            i0 = None
+
+        starting_indices = [i0]
+
+        for row in matrix_form[1:]:
+            normal_form, starting_indices = self.add_row_to_normal_form(normal_form, starting_indices, row)
+
+        self.normal_form = normal_form
+        self.starting_indices = starting_indices
+
+        return normal_form
+
+    def is_dependent(self, observable, num_palis, num_paulis_previous=None):
+        # If the pauli span of the last check is provided and the new rank is nor smaller, it's still dependent.
+        if num_paulis_previous:
+            if self.rank(num_paulis_previous) == self.rank(num_palis):
+                return True
