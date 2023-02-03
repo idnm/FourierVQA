@@ -23,11 +23,14 @@ class PauliCircuit:
     def num_qubits(self):
         return self.paulis[0].num_qubits
 
-    def to_parameterized_circuit(self):
-        if self.parameters is not None:
+    def default_parameters(self):
+        return [Parameter(f'x{i}') for i in range(len(self.paulis))]
+
+    def to_parameterized_circuit(self, default_parameters=False):
+        if self.parameters is not None and default_parameters is False:
             parameters = self.parameters
         else:
-            parameters = [Parameter(f'x{i}') for i in range(len(self.paulis))]
+            parameters = self.default_parameters()
 
         qc = QuantumCircuit(self.num_qubits)
         for pauli, parameter in zip(self.paulis, parameters):
@@ -38,11 +41,16 @@ class PauliCircuit:
 
         return qc
 
-    def expectation_value(self, observable, parameters):
-        if self.parameters:
-            parameters = {p_name: p_value for p_name, p_value in zip(self.parameters, parameters)}
-        qc = self.to_parameterized_circuit().bind_parameters(parameters)
-        state = Statevector(qc)
+    @staticmethod
+    def default_parameters_to_values_dict(parameters, values):
+        parameter_indices = [int(p.name[1:]) for p in parameters]
+        return {parameter: values[i] for parameter, i in zip(parameters, parameter_indices)}
+
+    def expectation_value(self, observable, parameter_values):
+        qc = self.to_parameterized_circuit(default_parameters=True)
+        parameters_dict = self.default_parameters_to_values_dict(qc.parameters, parameter_values)
+
+        state = Statevector(qc.bind_parameters(parameters_dict))
         return state.expectation_value(observable)
 
     @staticmethod
@@ -356,22 +364,15 @@ class FourierComputation:
 
         return new_incomplete_nodes, complete_nodes
 
-    def _check_type(self, t):
-        if self.type is None:
-            self.type = t
-        else:
-            assert self.type == t, f'Continuing computation of a different type {self.type} is not allowed.'
-
     def evaluate_at(self, parameters):
-        state0 = Statevector(QuantumCircuit(self.pauli_circuit.num_qubits))
-        res = 0
-        for node in self.complete_nodes:
-            res += state0.expectation_value(node.observable)*node.monomial(parameters)
+        state0 = StabilizerState(Pauli('I'*self.pauli_circuit.num_qubits))
 
-        return res
+        results = [state0.expectation_value(node.observable)*node.monomial(parameters) for node in self.complete_nodes]
+
+        return sum(results)
 
     def order_statistics(self):
-        M = len(self.paulis)
+        M = self.pauli_space.num_paulis
         orders = [node.order for node in self.complete_nodes]
         return [orders.count(m) for m in range(M + 1)]
 
@@ -379,7 +380,7 @@ class FourierComputation:
         return [n / (2 ** m) for m, n in enumerate(self.order_statistics())]
 
     def visualize(self):
-        M = len(self.paulis)
+        M = self.pauli_space.num_paulis
 
         plt.scatter(range(M + 1), np.array(self.order_statistics()) / (3 / 2) ** M)
         plt.scatter(range(M + 1), self.norm_statistics())
