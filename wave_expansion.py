@@ -13,110 +13,6 @@ from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Statevector, D
 from scipy.special import binom
 
 
-def commute_all_cliffords_to_the_end(gates):
-    commuted_something = True
-    while commuted_something:
-        commuted_something, gates = commute_the_first_clifford(gates)
-    num_pauli_gates = len([True for gate_type, _, _ in gates if gate_type=='pauli'])
-    pauli_gates = [gate for _, gate, _ in gates[:num_pauli_gates]]
-    clifford_gates = gates[num_pauli_gates:]
-
-    num_qubits = pauli_gates[0].num_qubits
-    qc = QuantumCircuit(num_qubits)
-    for _, gate, qubits in clifford_gates:
-        qc.append(gate.to_instruction(), qubits)
-    final_clifford = Clifford.from_circuit(qc)
-    return pauli_gates, final_clifford
-
-
-def commute_the_first_clifford(gates):
-
-    for i in range(len(gates)-1):
-        gate_type, gate, qubits = gates[i]
-        next_gate_type, next_gate, next_qubits = gates[i+1]
-        if gate_type == 'clifford' and next_gate_type == 'pauli':
-            gates[i] = 'pauli', next_gate.evolve(gate, qubits), next_qubits
-            gates[i+1] = 'clifford', gate, qubits
-            commuted_something = True
-            break
-    else:
-        commuted_something = False
-
-    return commuted_something, gates
-
-
-def clifford_pauli_data(qc, parametric_to_pauli_dict=None):
-    """Unroll the circuit according to circuit.data and identify each gate either as a Clifford gate
-    or as a Pauli rotation."""
-
-    if not parametric_to_pauli_dict:
-        parametric_to_pauli_dict = {}
-    gates = []
-    parameters = []
-    for gate, qargs, cargs in qc.data:
-        qubits = [q._index for q in qargs]
-        try:
-            new_gate = Clifford(gate)
-            gate_type = 'clifford'
-        except (QiskitError, TypeError):
-            if not gate.is_parameterized():
-                raise ValueError(f'Gate {gate.name} is neither clifford nor parametric.')
-            if len(gate.params) != 1:
-                raise ValueError(f'Parametric gates must have a single parameter. Got gate {gate.name} with gate.params={gate.params})')
-            if gate.name in parametric_to_pauli_dict:
-                pauli = parametric_to_pauli_dict[gate.name]
-            else:
-                pauli = pauli_generator_from_parametric_gate(gate)
-                parametric_to_pauli_dict[gate.name] = pauli
-
-            parameter = gate.params[0]
-            parameters.append(parameter)
-            new_gate = full_pauli_generator(pauli, qubit_indices=qubits, num_qubits=qc.num_qubits)
-            qubits = list(range(qc.num_qubits))
-            gate_type = 'pauli'
-
-        gates.append((gate_type, new_gate, qubits))
-
-    return gates, parameters
-
-
-def pauli_generator_from_parametric_gate(gate):
-    gate = copy.deepcopy(gate)
-    gate.params = [Parameter('theta')]  # In case gate came with parameter like 0.5*Parameter('theta')
-    qc = QuantumCircuit(gate.num_qubits)
-    qc.append(gate, range(gate.num_qubits))
-
-    # Check that gate(pi) is a pauli gate.
-    gate_at_pi = Operator(qc.bind_parameters([np.pi])).data
-
-    for pauli in pauli_basis(gate.num_qubits):
-        if np.allclose(gate_at_pi, -1j * pauli.to_matrix()):
-            pauli = pauli
-            break
-    else:
-        raise ValueError(f'Gate {gate.name} at pi is not a pauli gate.')
-
-    # Check that gate(x) is exponential of the pauli gate for other parameters.
-    # This will fail e.g. for exp(i x (Z1+Z2)).
-    xx = np.linspace(0, 2 * np.pi, 19)
-    gate_values = np.array([Operator(qc.bind_parameters([x])).data for x in xx])
-    pauli_rotation_values = np.array([PauliRotation.matrix(pauli, x) for x in xx])
-
-    if not np.allclose(gate_values, pauli_rotation_values):
-        raise ValueError(f'Gate {gate.name} is not a Pauli rotation.')
-
-    return pauli
-
-
-def full_pauli_generator(pauli, qubit_indices, num_qubits):
-    short_generator = pauli.to_label()
-    generator = ['I'] * num_qubits
-    for label, q in zip(short_generator, qubit_indices[::-1]):
-        generator[q] = label
-
-    return Pauli(''.join(generator)[::-1])
-
-
 class PauliCircuit:
     def __init__(self, paulis, final_clifford=None, parameters=None):
         self.paulis = paulis
@@ -126,20 +22,6 @@ class PauliCircuit:
     @property
     def num_qubits(self):
         return self.paulis[0].num_qubits
-
-    @staticmethod
-    def from_parameterized_circuit(qc):
-        gates, parameters = clifford_pauli_data(qc)
-        pauli_gates, final_clifford = commute_all_cliffords_to_the_end(gates)
-        return PauliCircuit(pauli_gates, final_clifford, parameters)
-
-    @staticmethod
-    def random(num_qubits, num_paulis, seed=0):
-        np.random.seed(seed)
-        seeds = np.random.randint(0, 10000, size=num_paulis)
-        paulis = [random_pauli(num_qubits, seed=s) for s in seeds]
-
-        return PauliCircuit(paulis)
 
     def to_parameterized_circuit(self):
         if self.parameters is not None:
@@ -161,6 +43,125 @@ class PauliCircuit:
         state = Statevector(qc)
         return state.expectation_value(observable)
 
+    @staticmethod
+    def from_parameterized_circuit(qc):
+        gates, parameters = PauliCircuit.clifford_pauli_data(qc)
+        pauli_gates, final_clifford = PauliCircuit.commute_all_cliffords_to_the_end(gates)
+        return PauliCircuit(pauli_gates, final_clifford, parameters)
+
+    @staticmethod
+    def random(num_qubits, num_paulis, seed=0):
+        np.random.seed(seed)
+        seeds = np.random.randint(0, 10000, size=num_paulis)
+        paulis = [random_pauli(num_qubits, seed=s) for s in seeds]
+
+        return PauliCircuit(paulis)
+
+    @staticmethod
+    def commute_all_cliffords_to_the_end(gates):
+        commuted_something = True
+        while commuted_something:
+            commuted_something, gates = PauliCircuit.commute_the_first_clifford(gates)
+        num_pauli_gates = len([True for gate_type, _, _ in gates if gate_type == 'pauli'])
+        pauli_gates = [gate for _, gate, _ in gates[:num_pauli_gates]]
+        clifford_gates = gates[num_pauli_gates:]
+
+        num_qubits = pauli_gates[0].num_qubits
+        qc = QuantumCircuit(num_qubits)
+        for _, gate, qubits in clifford_gates:
+            qc.append(gate.to_instruction(), qubits)
+        final_clifford = Clifford.from_circuit(qc)
+        return pauli_gates, final_clifford
+
+    @staticmethod
+    def commute_the_first_clifford(gates):
+
+        for i in range(len(gates) - 1):
+            gate_type, gate, qubits = gates[i]
+            next_gate_type, next_gate, next_qubits = gates[i + 1]
+            if gate_type == 'clifford' and next_gate_type == 'pauli':
+                gates[i] = 'pauli', next_gate.evolve(gate, qubits), next_qubits
+                gates[i + 1] = 'clifford', gate, qubits
+                commuted_something = True
+                break
+        else:
+            commuted_something = False
+
+        return commuted_something, gates
+
+    @staticmethod
+    def clifford_pauli_data(qc, parametric_to_pauli_dict=None):
+        """Unroll the circuit according to circuit.data and identify each gate either as a Clifford gate
+        or as a Pauli rotation."""
+
+        if not parametric_to_pauli_dict:
+            parametric_to_pauli_dict = {}
+        gates = []
+        parameters = []
+        for gate, qargs, cargs in qc.data:
+            qubits = [q._index for q in qargs]
+            try:
+                new_gate = Clifford(gate)
+                gate_type = 'clifford'
+            except (QiskitError, TypeError):
+                if not gate.is_parameterized():
+                    raise ValueError(f'Gate {gate.name} is neither clifford nor parametric.')
+                if len(gate.params) != 1:
+                    raise ValueError(
+                        f'Parametric gates must have a single parameter. Got gate {gate.name} with gate.params={gate.params})')
+                if gate.name in parametric_to_pauli_dict:
+                    pauli = parametric_to_pauli_dict[gate.name]
+                else:
+                    pauli = PauliCircuit.pauli_generator_from_parametric_gate(gate)
+                    parametric_to_pauli_dict[gate.name] = pauli
+
+                parameter = gate.params[0]
+                parameters.append(parameter)
+                new_gate = PauliCircuit.full_pauli_generator(pauli, qubit_indices=qubits, num_qubits=qc.num_qubits)
+                qubits = list(range(qc.num_qubits))
+                gate_type = 'pauli'
+
+            gates.append((gate_type, new_gate, qubits))
+
+        return gates, parameters
+
+    @staticmethod
+    def pauli_generator_from_parametric_gate(gate):
+        gate = copy.deepcopy(gate)
+        gate.params = [Parameter('theta')]  # In case gate came with parameter like 0.5*Parameter('theta')
+        qc = QuantumCircuit(gate.num_qubits)
+        qc.append(gate, range(gate.num_qubits))
+
+        # Check that gate(pi) is a pauli gate.
+        gate_at_pi = Operator(qc.bind_parameters([np.pi])).data
+
+        for pauli in pauli_basis(gate.num_qubits):
+            if np.allclose(gate_at_pi, -1j * pauli.to_matrix()):
+                pauli = pauli
+                break
+        else:
+            raise ValueError(f'Gate {gate.name} at pi is not a pauli gate.')
+
+        # Check that gate(x) is exponential of the pauli gate for other parameters.
+        # This will fail e.g. for exp(i x (Z1+Z2)).
+        xx = np.linspace(0, 2 * np.pi, 19)
+        gate_values = np.array([Operator(qc.bind_parameters([x])).data for x in xx])
+        pauli_rotation_values = np.array([PauliRotation.matrix(pauli, x) for x in xx])
+
+        if not np.allclose(gate_values, pauli_rotation_values):
+            raise ValueError(f'Gate {gate.name} is not a Pauli rotation.')
+
+        return pauli
+
+    @staticmethod
+    def full_pauli_generator(pauli, qubit_indices, num_qubits):
+        short_generator = pauli.to_label()
+        generator = ['I'] * num_qubits
+        for label, q in zip(short_generator, qubit_indices[::-1]):
+            generator[q] = label
+
+        return Pauli(''.join(generator)[::-1])
+
 
 class PauliSpace:
     def __init__(self, paulis):
@@ -171,29 +172,30 @@ class PauliSpace:
         self.normal_form = None
         self.decomposition_matrix = None
 
+    @property
+    def dim(self):
+        return self.paulis[0].num_qubits
+
+    @property
+    def num_paulis(self):
+        return len(self.paulis)
+
+    def rank(self, up_to_pauli_num):
+        return len([n for n in self.independent_paulis if n <= up_to_pauli_num])
+
     def list_decomposition(self, decomposition):
-        print('this is computed wrongly!')
-        return [self.independent_paulis[i] for i in decomposition]
+        return [self.independent_paulis[n] for n, coefficient in enumerate(decomposition) if coefficient]
 
-    def contains(self, decomposition, num_pauli):
+    def decomposition_contains_pauli(self, decomposition, num_pauli):
         return num_pauli in self.list_decomposition(decomposition)
-
-    def construct(self):
-        independent_paulis, dependent_paulis, normal_form, decomposition_matrix = self.basis_and_decompositions(self.paulis)
-        self.independent_paulis = independent_paulis
-        self.dependent_paulis = dependent_paulis
-        self.normal_form = normal_form
-        self.decomposition_matrix = decomposition_matrix
 
     def is_independent(self, num_pauli):
         return num_pauli in self.independent_paulis
 
-    def requires_paulis(self, decomposition):
+    def decomposition_requires_paulis(self, decomposition):
         if np.all(decomposition == 0):
             return 0
-        nonzero, = decomposition.nonzero()
-        last_nonzero = nonzero[-1]
-        return self.independent_paulis[last_nonzero]
+        return max(self.list_decomposition(decomposition))
 
     def compute_decomposition(self, observable, num_paulis):
         normal_form = self.normal_form[:num_paulis]
@@ -201,9 +203,12 @@ class PauliSpace:
         normal_form, decomposition_matrix = self.extend_normal_form(normal_form, decomposition_matrix, observable.x)
         return decomposition_matrix[-1]
 
-    @property
-    def dim(self):
-        return self.paulis[0].num_qubits
+    def construct(self):
+        independent_paulis, dependent_paulis, normal_form, decomposition_matrix = self.basis_and_decompositions(self.paulis)
+        self.independent_paulis = independent_paulis
+        self.dependent_paulis = dependent_paulis
+        self.normal_form = normal_form
+        self.decomposition_matrix = decomposition_matrix
 
     @staticmethod
     def basis_and_decompositions(paulis):
@@ -269,33 +274,27 @@ class PauliSpace:
 
         return normal_form+[pauli], decomposition_matrix+[decomposition]
 
-    @property
-    def num_paulis(self):
-        return len(self.paulis)
-
     def update_decomposition(self, decomposition, num_pauli):
         if decomposition is None:
             return None
         return decomposition ^ self.decomposition_matrix[num_pauli]
 
-    def rank(self, up_to_pauli_num):
-        return len([n for n in self.independent_paulis if n <= up_to_pauli_num])
-
 
 class FourierComputation:
     def __init__(self, pauli_circuit, pauli_observable):
         self.pauli_circuit = pauli_circuit
-        self.original_observable = pauli_observable
         pauli_space = PauliSpace(pauli_circuit.paulis)
         pauli_space.construct()
         self.pauli_space = pauli_space
+
+        self.original_observable = pauli_observable
         if self.pauli_circuit.final_clifford:
             self.observable = self.original_observable.evolve(self.pauli_circuit.final_clifford)
         else:
             self.observable = self.original_observable
+
         self.complete_nodes = []
         self.incomplete_nodes = []
-        self.type = None
         self.num_iterations = 0
 
     def run(self, check_admissible=True, max_order=None):
@@ -320,23 +319,12 @@ class FourierComputation:
         # Run recursive algorithm. Each iteration computes all Fourier terms of at the next order.
         for _ in range(num_iterations):
             self.num_iterations += 1
-            self.incomplete_nodes, self.complete_nodes = self.iteration_sequential(
+            self.incomplete_nodes, self.complete_nodes = self.iteration(
                 self.incomplete_nodes, self.complete_nodes, check_admissible)
             if len(self.incomplete_nodes) == 0:
                 break
 
-    # def is_admissible(self, num_paulis, observable):
-    #     """Test if an observable can be represented as a product of first `num_paulis` pauli operators."""
-    #
-    #     # If the remaining number of pauli operators is enough for full rank.
-    #     if num_paulis >= len(self.pauli_echelons):
-    #         return True
-    #
-    #     pauli_echelon = self.pauli_echelons[num_paulis]
-    #
-    #     return is_linearly_dependent(projection_x(observable), pauli_echelon)
-
-    def iteration_sequential(self, incomplete_nodes, complete_nodes, check_admissibility):
+    def iteration(self, incomplete_nodes, complete_nodes, check_admissibility):
         if not incomplete_nodes:
             return [], complete_nodes
 
@@ -430,12 +418,15 @@ class FourierComputationNode:
 
     def branch_and_refine(self, pauli_space, check_admissibility):
 
-        # Check admissibility of the node and its branches.
+        # Each node processes here if at the branching point. Before branching,
+        # we can check admissibility of the current node itself, and if admissible, of its two branches.
 
         cos_admissible = True
         sin_admissible = True
 
-        # If checking for admissibility and the rank of remaining Paulis is not full.
+        # Admissibility is checked if the corresponding flag is true,
+        # and the remaining pauli operators are insufficient to decompose any observable.
+
         if check_admissibility and pauli_space.rank(self.num_paulis) < pauli_space.dim:
             self.is_admissible = False
 
@@ -445,8 +436,8 @@ class FourierComputationNode:
 
             # If decomposition was successful.
             if self.observable_decomposition is not None:
-                # If the number of available pauli matrices enough for decomposition, the node is admissible.
-                if pauli_space.requires_paulis(self.observable_decomposition) <= self.num_paulis:
+                # If the number of available pauli matrices is enough for decomposition, the node is admissible.
+                if pauli_space.decomposition_requires_paulis(self.observable_decomposition) <= self.num_paulis:
                     self.is_admissible = True
 
             # If the node is not admissible, in the end, abort the computation.
@@ -457,10 +448,10 @@ class FourierComputationNode:
 
             # If the branching Pauli is dependent, both branches are admissible.
             # If it is independent a single branch is admissible.
-            if not pauli_space.is_independent(self.num_paulis):
-
+            num_branching_pauli = self.num_paulis
+            if not pauli_space.is_independent(num_branching_pauli):
                 # If observable requires the branching Pauli in its decomposition the cos branch is not admissible.
-                if pauli_space.contains(self.observable_decomposition, self.num_paulis):
+                if pauli_space.decomposition_contains_pauli(self.observable_decomposition, num_branching_pauli):
                     cos_admissible = False
                 # Else the sin branch is not admissible.
                 else:
@@ -496,6 +487,8 @@ class FourierComputationNode:
                 res *= np.sin(x)
 
         return res
+
+#######################################################################################
 
 
 class CliffordPhiVQA:

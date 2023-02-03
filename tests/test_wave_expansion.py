@@ -80,21 +80,19 @@ def test_fourier_computation_with_filtering():
     for num_qubits in range(1, 5):
         for num_parameters in range(1, 6):
 
-            print('\n nnn')
-            print(num_qubits, num_parameters)
-
             qc = random_clifford_phi(num_qubits, num_parameters)
             pauli_circuit = PauliCircuit.from_parameterized_circuit(qc)
-            observable = random_pauli(num_qubits)
+            observable = random_pauli(num_qubits, seed=num_qubits*num_parameters)
 
             fourier_computation = FourierComputation(pauli_circuit, observable)
             fourier_computation.run(check_admissible=True)
 
             params = np.random.rand(num_parameters)
-            assert np.allclose(
-                pauli_circuit.expectation_value(observable, params),
-                fourier_computation.evaluate_at(params)
-            )
+            exp1 = pauli_circuit.expectation_value(observable, params)
+            exp2 = fourier_computation.evaluate_at(params)
+            assert np.allclose(exp1, exp2)
+            if not np.allclose(exp1, 0):
+                print(f'non trivial expectation {exp1}')
 
 
 def test_normal_form():
