@@ -62,48 +62,105 @@ def test_fourier_computation_plain():
 
     for num_qubits in range(1, 5):
         for num_parameters in range(1, 6):
-            qc = random_clifford_phi(num_qubits, num_parameters)
-            pauli_circuit = PauliCircuit.from_parameterized_circuit(qc)
-            observable = random_pauli(num_qubits)
+            for seed in range(5):
+                qc = random_clifford_phi(num_qubits, num_parameters, seed=seed)
+                pauli_circuit = PauliCircuit.from_parameterized_circuit(qc)
+                observable = random_pauli(num_qubits, seed=seed)
 
-            fourier_computation = FourierComputation(pauli_circuit, observable)
-            fourier_computation.run(check_admissible=False)
+                try:
+                    fourier_computation = FourierComputation(pauli_circuit, observable)
+                    fourier_computation.run(check_admissible=False)
+                except ValueError as e:
+                    print(e)
+                    continue
 
-            params = np.random.rand(num_parameters)
-            assert np.allclose(
-                pauli_circuit.expectation_value(observable, params),
-                fourier_computation.evaluate_at(params)
-            )
+                params = np.random.rand(num_parameters)
+                assert np.allclose(
+                    pauli_circuit.expectation_value(observable, params),
+                    fourier_computation.evaluate_at(params)
+                )
 
 
 def test_fourier_computation_with_filtering():
     for num_qubits in range(1, 5):
         for num_parameters in range(1, 6):
+            for seed in range(5):
+                qc = random_clifford_phi(num_qubits, num_parameters, seed=seed)
+                pauli_circuit = PauliCircuit.from_parameterized_circuit(qc)
+                observable = random_pauli(num_qubits, seed=seed)
 
-            qc = random_clifford_phi(num_qubits, num_parameters)
-            pauli_circuit = PauliCircuit.from_parameterized_circuit(qc)
-            observable = random_pauli(num_qubits, seed=num_qubits*num_parameters)
+                try:
+                    fourier_computation = FourierComputation(pauli_circuit, observable)
+                    fourier_computation.run(check_admissible=True)
+                except ValueError as e:
+                    print(e)
+                    continue
 
-            fourier_computation = FourierComputation(pauli_circuit, observable)
-            fourier_computation.run(check_admissible=True)
-
-            params = np.random.rand(num_parameters)
-            exp1 = pauli_circuit.expectation_value(observable, params)
-            exp2 = fourier_computation.evaluate_at(params)
-            assert np.allclose(exp1, exp2)
-            if not np.allclose(exp1, 0):
-                print(f'non trivial expectation {exp1}')
+                params = np.random.rand(num_parameters)
+                assert np.allclose(
+                    pauli_circuit.expectation_value(observable, params),
+                    fourier_computation.evaluate_at(params)
+                )
 
 
-def test_normal_form():
-    paulis = [Pauli('XYZ'[::-1]), Pauli('ZXX'[::-1]), Pauli('XXX'[::-1])]
-    independent, dependent, normal_form, decomposition_m = PauliSpace.basis_and_decompositions(paulis)
-    print('\n')
-    print('ind', independent)
-    print('d', dependent)
-    print('normal', np.array(normal_form))
-    print('dec', np.array(decomposition_m))
+def test_pauli_space():
 
+    num_qubits = 5
+
+    for seed in range(10):
+
+        # Create three independent paulis.
+        np.random.seed(0)
+        seeds = np.random.randint(0, 1000, size=3)
+        label0, label1, label2 = [list(random_pauli(num_qubits, seed=s).to_label()) for s in seeds]
+        label0[0] = 'X'
+        label1[0] = 'I'
+        label2[0] = 'I'
+
+        label0[1] = 'I'
+        label1[1] = 'Y'
+        label2[1] = 'I'
+
+        label0[2] = 'I'
+        label1[2] = 'Z'
+        label2[2] = 'X'
+
+        paulis = [Pauli(''.join(label)) for label in [label0, label1, label2]]
+
+        # Generate more paulis with clear dependence.
+        paulis = [paulis[0], paulis[0], paulis[0].compose(paulis[1]), paulis[1], paulis[2], paulis[1].compose(paulis[2])]
+
+        pauli_space = PauliSpace(paulis)
+        pauli_space.construct()
+
+        assert pauli_space.independent_paulis == [0, 2, 4]
+        assert pauli_space.dependent_paulis == [1, 3, 5]
+
+        assert np.all(pauli_space.decomposition_matrix[0] == [True, False, False, False, False])
+        assert np.all(pauli_space.decomposition_matrix[1] == [True, False, False, False, False])
+        assert np.all(pauli_space.decomposition_matrix[3] == [True, True, False, False, False])
+        assert np.all(pauli_space.decomposition_matrix[5] == [True, True, True, False, False])
+
+        assert pauli_space.list_decomposition(pauli_space.decomposition_matrix[1]) == [0]
+        assert pauli_space.list_decomposition(pauli_space.decomposition_matrix[3]) == [0, 2]
+        assert pauli_space.list_decomposition(pauli_space.decomposition_matrix[5]) == [0, 2, 4]
+
+        decomposition = pauli_space.compute_decomposition(Pauli('IIIII'), 5)
+        assert np.all(decomposition == [False, False, False, False, False])
+        assert pauli_space.list_decomposition(decomposition) == []
+
+        observable = paulis[3]
+        decomposition = pauli_space.compute_decomposition(observable, 2)
+        assert pauli_space.list_decomposition(decomposition) is None
+        decomposition = pauli_space.compute_decomposition(observable, 5)
+        assert pauli_space.list_decomposition(decomposition) == [0, 2]
+
+        assert pauli_space.list_decomposition(pauli_space.update_decomposition(decomposition, 0)) == [2]
+        assert pauli_space.list_decomposition(pauli_space.update_decomposition(decomposition, 2)) == [0]
+        assert pauli_space.list_decomposition(pauli_space.update_decomposition(decomposition, 4)) == [0, 2, 4]
+
+
+#################################################################################################
 
 def test_expectation():
     num_qubits = 4

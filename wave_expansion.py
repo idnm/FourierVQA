@@ -39,6 +39,8 @@ class PauliCircuit:
         return qc
 
     def expectation_value(self, observable, parameters):
+        if self.parameters:
+            parameters = {p_name: p_value for p_name, p_value in zip(self.parameters, parameters)}
         qc = self.to_parameterized_circuit().bind_parameters(parameters)
         state = Statevector(qc)
         return state.expectation_value(observable)
@@ -184,6 +186,8 @@ class PauliSpace:
         return len([n for n in self.independent_paulis if n <= up_to_pauli_num])
 
     def list_decomposition(self, decomposition):
+        if decomposition is None:
+            return None
         return [self.independent_paulis[n] for n, coefficient in enumerate(decomposition) if coefficient]
 
     def decomposition_contains_pauli(self, decomposition, num_pauli):
@@ -193,6 +197,7 @@ class PauliSpace:
         return num_pauli in self.independent_paulis
 
     def decomposition_requires_paulis(self, decomposition):
+        # if decomposition:
         if np.all(decomposition == 0):
             return 0
         return max(self.list_decomposition(decomposition))
@@ -201,7 +206,12 @@ class PauliSpace:
         normal_form = self.normal_form[:num_paulis]
         decomposition_matrix = self.decomposition_matrix[:num_paulis]
         normal_form, decomposition_matrix = self.extend_normal_form(normal_form, decomposition_matrix, observable.x)
-        return decomposition_matrix[-1]
+
+        # Decomposition successful.
+        if np.all(normal_form[-1] == 0):
+            return decomposition_matrix[-1]
+        else:
+            return None
 
     def construct(self):
         independent_paulis, dependent_paulis, normal_form, decomposition_matrix = self.basis_and_decompositions(self.paulis)
@@ -277,7 +287,16 @@ class PauliSpace:
     def update_decomposition(self, decomposition, num_pauli):
         if decomposition is None:
             return None
-        return decomposition ^ self.decomposition_matrix[num_pauli]
+
+        if num_pauli in self.dependent_paulis:
+            # For dependent paulis decompositions are stored in the decomposition matrix
+            update = self.decomposition_matrix[num_pauli]
+        else:
+            # For independent paulis,
+            # decomposition vector is one-hot vector with True at the number of pauli in the basis.
+            update = np.eye(self.dim, dtype=bool)[self.independent_paulis.index(num_pauli)]
+
+        return decomposition ^ update
 
 
 class FourierComputation:
@@ -448,10 +467,10 @@ class FourierComputationNode:
 
             # If the branching Pauli is dependent, both branches are admissible.
             # If it is independent a single branch is admissible.
-            num_branching_pauli = self.num_paulis
-            if not pauli_space.is_independent(num_branching_pauli):
+            idx_branching_pauli = self.num_paulis-1
+            if pauli_space.is_independent(idx_branching_pauli):
                 # If observable requires the branching Pauli in its decomposition the cos branch is not admissible.
-                if pauli_space.decomposition_contains_pauli(self.observable_decomposition, num_branching_pauli):
+                if pauli_space.decomposition_contains_pauli(self.observable_decomposition, idx_branching_pauli):
                     cos_admissible = False
                 # Else the sin branch is not admissible.
                 else:
