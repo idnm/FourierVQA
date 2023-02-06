@@ -77,7 +77,7 @@ def test_fourier_computation_plain():
                 params = np.random.rand(num_parameters)
                 assert np.allclose(
                     pauli_circuit.expectation_value(observable, params),
-                    fourier_computation.evaluate_at(params)
+                    fourier_computation.evaluate_loss_at(params)
                 )
 
 
@@ -99,7 +99,7 @@ def test_fourier_computation_with_filtering():
                 params = np.random.rand(num_parameters)
                 assert np.allclose(
                     pauli_circuit.expectation_value(observable, params),
-                    fourier_computation.evaluate_at(params)
+                    fourier_computation.evaluate_loss_at(params)
                 )
 
 
@@ -172,7 +172,7 @@ def test_output():
 
     params = np.random.rand(num_parameters)
 
-    exp_fourier = fourier_computation.evaluate_at(params)
+    exp_fourier = fourier_computation.evaluate_loss_at(params)
     # exp_circ = pauli_circuit.expectation_value(observable, params)
 
     # print('check', np.allclose(exp_circ, exp_fourier))

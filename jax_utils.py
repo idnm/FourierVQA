@@ -131,7 +131,7 @@ def all_monomial_arrays(all_parameters, num_parameters, order):
 def jax_fourier_mode(fourier_mode):
     order = len(list(fourier_mode.poly_dict.keys())[0])
     if order == 0:
-        return lambda _: fourier_mode.poly_dict[()].evaluate_at([])  # At order=0 return constant function
+        return lambda _: fourier_mode.poly_dict[()].evaluate_loss_at([])  # At order=0 return constant function
 
     num_parameters = max(max(fourier_mode.poly_dict.keys())) + 1
     coefficients = jnp.array([fourier_mode.poly_dict[configuration].coefficients for configuration in

@@ -323,6 +323,14 @@ class FourierComputation:
         self.incomplete_nodes = []
         self.num_iterations = 0
 
+    @staticmethod
+    def random(num_qubits, num_paulis, seed=0):
+        np.random.seed(seed)
+        seeds = np.random.randint(0, 10**6, 2)
+        pauli_circuit = PauliCircuit.random(num_qubits, num_paulis, seed=seeds[0])
+        observable = random_pauli(num_qubits, seed=seeds[1])
+        return FourierComputation(pauli_circuit, observable)
+
     def run(self, check_admissible=True, max_order=None):
 
         # Initialize the computation if it wasn't.
@@ -348,11 +356,11 @@ class FourierComputation:
             self.num_iterations += 1
             self.incomplete_nodes, self.complete_nodes = self.iteration(
                 self.incomplete_nodes, self.complete_nodes, check_admissible)
-            if len(self.incomplete_nodes) == 0:
-                break
 
             relative, absolute, remaining = self.status()
-            progress_bar.set_postfix_str(f'(relative: {relative:.0%}, absolute: {absolute:.2f}, remaining: {remaining:.2f})')
+            progress_bar.set_postfix_str(f'(relative: {relative:.2%}, absolute: {absolute:.2g}, remaining: {remaining:.2g})')
+            if len(self.incomplete_nodes) == 0:
+                break
 
     def iteration(self, incomplete_nodes, complete_nodes, check_admissibility):
         if not incomplete_nodes:
@@ -368,11 +376,14 @@ class FourierComputation:
         return new_incomplete_nodes, complete_nodes
 
     def status(self):
-        found_norm = sum(self.norm_statistics())
-        bound_remaining_norm = self.bound_remaining_norm()
-        relative_norm_found = found_norm/(found_norm+bound_remaining_norm)
+        norm_found = sum(self.norm_stats(only_nonzero=True))
+        norm_remaining_bound = self.bound_remaining_norm()
+        try:
+            relative_norm_found = norm_found/(norm_found+norm_remaining_bound)
+        except ZeroDivisionError:
+            relative_norm_found = 1
 
-        return relative_norm_found, found_norm, bound_remaining_norm
+        return relative_norm_found, norm_found, norm_remaining_bound
 
     def bound_remaining_norm(self):
         M = self.pauli_space.num_paulis
@@ -380,37 +391,38 @@ class FourierComputation:
         order_statistic = [orders.count(m) for m in range(M + 1)]
         return sum([n / (2 ** m) for m, n in enumerate(order_statistic)])
 
-    def evaluate_at(self, parameters):
+    def evaluate_loss_at(self, parameters):
         state0 = StabilizerState(Pauli('I'*self.pauli_circuit.num_qubits))
-
         results = [state0.expectation_value(node.observable)*node.monomial(parameters) for node in self.complete_nodes]
 
         return sum(results)
 
-    def order_statistics(self):
+    def bound_remaining_loss(self, parameters):
+        # Not trivial since |cos(x)|+|sin(x)|< sqrt(2) and grows.
+        # Better estimates might be available.
+        
+        return None
+        # return sum([np.abs(node.monomial(parameters)) for node in self.incomplete_nodes])
+
+    def node_stats(self, only_nonzero=False):
         M = self.pauli_space.num_paulis
-        orders = [node.order for node in self.complete_nodes]
+        if only_nonzero:
+            orders = [node.order for node in self.complete_nodes if not np.allclose(node.expectation_value, 0)]
+        else:
+            orders = [node.order for node in self.complete_nodes]
         return [orders.count(m) for m in range(M + 1)]
 
-    def norm_statistics(self):
-        return [n / (2 ** m) for m, n in enumerate(self.order_statistics())]
+    def norm_stats(self, only_nonzero=False):
+        return [n / (2 ** m) for m, n in enumerate(self.node_stats(only_nonzero))]
 
     def visualize(self):
         M = self.pauli_space.num_paulis
 
-        plt.scatter(range(M + 1), np.array(self.order_statistics()) / (3 / 2) ** M)
-        plt.scatter(range(M + 1), self.norm_statistics())
+        plt.scatter(range(M + 1), np.array(self.node_stats()) / (3 / 2) ** M)
+        plt.scatter(range(M + 1), self.norm_stats())
 
         plt.plot(random_node_distribution(M), linestyle='--')
         plt.plot(random_norm_distribution(M), linestyle='--')
-
-
-def random_node_distribution(M):
-    return [binom(M, m) * 2 ** (m - M) / (3 / 2) ** M for m in range(M + 1)]
-
-
-def random_norm_distribution(M):
-    return [binom(M, m) * 2 ** (-M) for m in range(M + 1)]
 
 
 class FourierComputationNode:
@@ -420,6 +432,7 @@ class FourierComputationNode:
         self.branch_history = branch_history
         self.is_admissible = None
         self.observable_decomposition = None
+        self.expectation_value = None
 
     @property
     def order(self):
@@ -428,10 +441,13 @@ class FourierComputationNode:
     @property
     def is_complete(self):
         # The node is complete is no Paulis remain.
-        return self.num_paulis == 0
+        node_is_complete = self.num_paulis == 0
+        if node_is_complete:
+            self.compute_expectation_value()
+        return node_is_complete
 
     def __repr__(self):
-        return f'{self.num_paulis} {self.observable} {self.branch_history}'
+        return f'{self.expectation_value} {self.num_paulis} {self.observable} {self.branch_history}'
 
     def remove_commuting_paulis(self, pauli_space):
         paulis = pauli_space.paulis[:self.num_paulis]
@@ -486,6 +502,7 @@ class FourierComputationNode:
 
             # If the node is not admissible, in the end, abort the computation.
             if not self.is_admissible:
+                self.expectation_value = 0
                 complete_nodes = [self]
                 incomplete_nodes = []
                 return incomplete_nodes, complete_nodes
@@ -532,6 +549,19 @@ class FourierComputationNode:
 
         return res
 
+    def compute_expectation_value(self): 
+        state = StabilizerState(Pauli('I'*self.observable.num_qubits))
+        expectation_value = state.expectation_value(self.observable)
+        self.expectation_value = expectation_value
+        return expectation_value
+
+
+def random_node_distribution(M):
+    return [binom(M, m) * 2 ** (m - M) / (3 / 2) ** M for m in range(M + 1)]
+
+
+def random_norm_distribution(M):
+    return [binom(M, m) * 2 ** (-M) for m in range(M + 1)]
 
 # num_qubits = 20
 # num_parameters = 50
@@ -604,7 +634,7 @@ class CliffordPhiVQA:
             self.compute_fourier_mode(up_to_order)
 
         def f(parameters):
-            return sum(fourier_mode.evaluate_at(parameters) for fourier_mode in self.fourier_modes[:up_to_order+1])
+            return sum(fourier_mode.evaluate_loss_at(parameters) for fourier_mode in self.fourier_modes[:up_to_order + 1])
 
         return f
 
@@ -618,7 +648,7 @@ class FourierMode:
         for parameter_configuration, polynomial in self.poly_dict.items():
             if all([p in fixed_parameters_dict.keys() for p in parameter_configuration]):
                 parameters = np.array([fixed_parameters_dict[p] for p in parameter_configuration])
-                total += polynomial.evaluate_at(parameters)
+                total += polynomial.evaluate_loss_at(parameters)
 
         return total
 
