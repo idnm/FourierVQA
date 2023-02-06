@@ -1,16 +1,15 @@
 import copy
-from functools import reduce
 from itertools import product, combinations
-from typing import List
 
 import numpy as np
 from matplotlib import pyplot as plt
 from qiskit import QuantumCircuit, QiskitError
-from qiskit.circuit import ParameterExpression, Instruction, Gate, CircuitInstruction, Parameter
-from qiskit.circuit.library import RZZGate, RZGate, RYGate, RXGate, IGate, PauliEvolutionGate
+from qiskit.circuit import Parameter
+from qiskit.circuit.library import PauliEvolutionGate
 from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Statevector, DensityMatrix, SparsePauliOp, Operator, \
     pauli_basis, random_pauli
 from scipy.special import binom
+from tqdm import tqdm
 
 
 class PauliCircuit:
@@ -344,12 +343,16 @@ class FourierComputation:
         num_iterations = max_order-self.num_iterations
 
         # Run recursive algorithm. Each iteration computes all Fourier terms of at the next order.
-        for _ in range(num_iterations):
+        progress_bar = tqdm(range(num_iterations))
+        for _ in progress_bar:
             self.num_iterations += 1
             self.incomplete_nodes, self.complete_nodes = self.iteration(
                 self.incomplete_nodes, self.complete_nodes, check_admissible)
             if len(self.incomplete_nodes) == 0:
                 break
+
+            relative, absolute, remaining = self.status()
+            progress_bar.set_postfix_str(f'(relative: {relative:.0%}, absolute: {absolute:.2f}, remaining: {remaining:.2f})')
 
     def iteration(self, incomplete_nodes, complete_nodes, check_admissibility):
         if not incomplete_nodes:
@@ -363,6 +366,19 @@ class FourierComputation:
             complete_nodes.extend(completed_nodes)
 
         return new_incomplete_nodes, complete_nodes
+
+    def status(self):
+        found_norm = sum(self.norm_statistics())
+        bound_remaining_norm = self.bound_remaining_norm()
+        relative_norm_found = found_norm/(found_norm+bound_remaining_norm)
+
+        return relative_norm_found, found_norm, bound_remaining_norm
+
+    def bound_remaining_norm(self):
+        M = self.pauli_space.num_paulis
+        orders = [node.order for node in self.incomplete_nodes]
+        order_statistic = [orders.count(m) for m in range(M + 1)]
+        return sum([n / (2 ** m) for m, n in enumerate(order_statistic)])
 
     def evaluate_at(self, parameters):
         state0 = StabilizerState(Pauli('I'*self.pauli_circuit.num_qubits))
@@ -385,8 +401,16 @@ class FourierComputation:
         plt.scatter(range(M + 1), np.array(self.order_statistics()) / (3 / 2) ** M)
         plt.scatter(range(M + 1), self.norm_statistics())
 
-        plt.plot([binom(M, m) * 2 ** (m - M) / (3 / 2) ** M for m in range(M + 1)], linestyle='--')
-        plt.plot([binom(M, m) * 2 ** (-M) for m in range(M + 1)], linestyle='--')
+        plt.plot(random_node_distribution(M), linestyle='--')
+        plt.plot(random_norm_distribution(M), linestyle='--')
+
+
+def random_node_distribution(M):
+    return [binom(M, m) * 2 ** (m - M) / (3 / 2) ** M for m in range(M + 1)]
+
+
+def random_norm_distribution(M):
+    return [binom(M, m) * 2 ** (-M) for m in range(M + 1)]
 
 
 class FourierComputationNode:
@@ -507,6 +531,16 @@ class FourierComputationNode:
                 res *= np.sin(x)
 
         return res
+
+
+# num_qubits = 20
+# num_parameters = 50
+#
+# pauli_circuit = PauliCircuit.random(num_qubits, num_parameters)
+# observable = random_pauli(num_qubits, seed=2)
+#
+# fourier_computation = FourierComputation(pauli_circuit, observable)
+# fourier_computation.run(check_admissible=True)
 
 #######################################################################################
 
