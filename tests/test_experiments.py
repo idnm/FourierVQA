@@ -97,3 +97,30 @@ def test_node_estimation():
     #     print(f'terms {node_distribution.counts_array.sum()}')
 
 
+def test_single_update():
+    num_qubits = 40
+
+    observable = CoarsePauli.from_pauli(random_pauli(num_qubits, seed=10))
+    pauli1 = CoarsePauli.from_pauli(random_pauli(num_qubits, seed=30))
+    pauli2 = CoarsePauli.from_pauli(random_pauli(num_qubits, seed=40))
+
+    # observable = CoarsePauli(num_qubits, 0, 1)
+    # pauli1 = CoarsePauli(num_qubits, 1, 2)
+    # pauli2 = CoarsePauli(num_qubits, 1, 1)
+
+    node_distribution = NodeDistribution.from_observable_and_pauli(observable, pauli1)
+    print(node_distribution.counts_array.sum())
+    print(node_distribution)
+
+    # probs = []
+    # for z in range(num_qubits+1):
+    #     for x in range(num_qubits + 1):
+    #
+    #         count = node_distribution.counts_array[z, x]
+    #         prob = CoarsePauli(num_qubits, z, x).commuting_probability(pauli2)
+    #         # print(f'z{z} x{x} count{count} prob {prob}')
+    #         probs.append(prob*count)
+
+    # print((sum(probs) / node_distribution.counts_array.sum()))
+    # print(((0.5 / sum(probs) * node_distribution.counts_array.sum())))
+    # print(((0.5/sum(probs)*node_distribution.counts_array.sum()))**100)

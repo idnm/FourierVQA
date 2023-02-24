@@ -118,14 +118,16 @@ class NodeDistribution:
         return NodeDistribution(counts_array)
 
     def update(self, pauli):
+        new_counts = np.zeros((self.num_qubits+1, self.num_qubits+1))
         for z in range(self.num_qubits+1):
             for x in range(self.num_qubits+1):
                 current_count = self.counts_array[z, x]
                 if current_count != 0:
                     observable = CoarsePauli(self.num_qubits, z, x)
                     node_distribution = NodeDistribution.from_observable_and_pauli(observable, pauli)
-                    self.counts_array[z, x] = 0
-                    self.counts_array += node_distribution.counts_array*current_count
+                    new_counts += node_distribution.counts_array*current_count
+                    
+        self.counts_array = new_counts
 
     @staticmethod
     def from_observable_and_pauli(observable, pauli):
