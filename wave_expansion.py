@@ -331,7 +331,7 @@ class FourierComputation:
         observable = random_pauli(num_qubits, seed=seeds[1])
         return FourierComputation(pauli_circuit, observable)
 
-    def run(self, check_admissible=True, max_order=None):
+    def run(self, check_admissible=True, max_order=None, verbose=True):
 
         # Initialize the computation if it wasn't.
         if not self.incomplete_nodes and not self.complete_nodes:
@@ -351,7 +351,7 @@ class FourierComputation:
         num_iterations = max_order-self.num_iterations
 
         # Run recursive algorithm. Each iteration computes all Fourier terms of at the next order.
-        progress_bar = tqdm(range(num_iterations))
+        progress_bar = tqdm(range(num_iterations), disable=not verbose)
         for _ in progress_bar:
             self.num_iterations += 1
             self.incomplete_nodes, self.complete_nodes = self.iteration(
@@ -400,7 +400,7 @@ class FourierComputation:
     def bound_remaining_loss(self, parameters):
         # Not trivial since |cos(x)|+|sin(x)|< sqrt(2) and grows.
         # Better estimates might be available.
-        
+
         return None
         # return sum([np.abs(node.monomial(parameters)) for node in self.incomplete_nodes])
 
@@ -555,13 +555,6 @@ class FourierComputationNode:
         self.expectation_value = expectation_value
         return expectation_value
 
-
-def random_node_distribution(M):
-    return [binom(M, m) * 2 ** (m - M) / (3 / 2) ** M for m in range(M + 1)]
-
-
-def random_norm_distribution(M):
-    return [binom(M, m) * 2 ** (-M) for m in range(M + 1)]
 
 # num_qubits = 20
 # num_parameters = 50

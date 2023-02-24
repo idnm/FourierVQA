@@ -183,5 +183,40 @@ Because $C_M^m$ is a symmetric function wrt $m\to M-m$ it is clear that to accou
 	n_{\frac{M}{2},M}\sim \sqrt{2}^M
 \end{align}
 In the large $M$ limit this is an exponentially small fraction of all parameters, yet containing exponentially many terms.
+\section{Random local models}
+Empiric results show that the number of nodes generated in local circuits such as QAOA is far less than for the random model. In order to estimate the bounds on local circuits that can be simulated let us introduce a local random model.
+
+Instead of tracking the exact positions of $X$ and $Z$ operators in Pauli string, we will only the total number of them, $n_x, n_z$.
+To make computations we need the following results.
+\begin{itemize}
+	\item Total number of ways that two qubits subsets of size $n_1$ and $n_2$ can intersect along $k$ positions in a register of size $N$ is given by
+	\begin{align}
+		Z_{n_1,n_2}^k=C_{n_1}^{k}C_{N-n_1}^{n_2-k}
+	\end{align}
+	Here we assume that $n_1\le n_2$. Condition $k\le n_1$ is imposed by construction. Condition that $k\ge n_1+n_2-N$ follows from the second factor.
+	\item The probability that two qubit subsets intersect in the way described above is
+	\begin{align}
+		P_{n_1,n_2}^k=\frac{Z_{n_1,n_2}^k}{Z_{n_1,n_2}},\quad Z_{n_1,n_2}=\sum_{k=0}^{n_1}Z_{n_1,n_2}^k
+	\end{align}
+	
+	\item Probability that two $P_{x}$ and $P_{z}$ anti-commute is given by the probability they intersect along an odd number of qubits
+	\begin{align}
+		PA(x,z)=\sum_{k\in\text{odd}}P_{z}^k
+	\end{align}
+	\item Probability that $P_{x_1,z_1}, P_{x_2,z_2}$ anti-commute is 
+	\begin{align}
+		PA(x_1,z_1,x_2,z_2)=PA(x_1,z_2)(1-PA(x_2,z_1))+(1-PA(x_1,z_2))PA(x_2,z_1)
+	\end{align}
+	\item 
+	\item If $P_{x_1,z_1}, P_{x_2,z_2}$ anti-commute their product will produce 
+	
+	\item Probability that two qubit subsets of size $n_1$ and $n_2$ intersect along $k$ qubits is
+	\begin{align}
+		P_{n_1,n_2}^k=\frac{C_{n_1}^kC_{n_2}^k}{P_{n_1,n_2}},\quad P_{n_1,n_2}=\sum_{k=0}^{\min(n_1,n_2)}P_{n_1,n_2}^k
+	\end{align}
+	\item Probability that $P(n_x)$ and $P(n_z)$ anti-commute is the probability that they intersect over an odd number of qubits. 
+\end{itemize}
+
+\section{Other Clifford+$\phi$ papers}
 
 \end{document}
