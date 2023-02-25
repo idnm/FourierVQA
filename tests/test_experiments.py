@@ -4,7 +4,7 @@ from qiskit.circuit import Parameter
 from qiskit.quantum_info import random_pauli, Pauli
 
 from experiments_utils import RandomLocalCircuit, CoarsePauli, NodeDistribution
-from wave_expansion import PauliCircuit
+from wave_expansion import PauliCircuit, FourierComputation
 
 
 def test_local_from_pauli():
@@ -124,3 +124,16 @@ def test_single_update():
     # print((sum(probs) / node_distribution.counts_array.sum()))
     # print(((0.5 / sum(probs) * node_distribution.counts_array.sum())))
     # print(((0.5/sum(probs)*node_distribution.counts_array.sum()))**100)
+
+
+def test_sampling():
+    num_qubits = 30
+    num_paulis = 50
+
+    fourier_computation = FourierComputation.random(num_qubits, num_paulis, seed=2)
+    print('\n')
+    est1 = (3/2)**num_paulis
+    est2 = fourier_computation.estimate_node_count(num_samples=10000)
+    print(est1, est2, est1/est2)
+    # node_stats = fourier_computation.sample(100)
+    # print(node_stats)

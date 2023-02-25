@@ -1,18 +1,12 @@
 import random
-from time import time
-
 
 import numpy as np
-from mynimize import OptOptions
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
-from qiskit.circuit.library import RXGate, RYGate, RZGate, RZZGate, RXXGate, RZXGate
-from qiskit.quantum_info import random_clifford, Operator, random_statevector, Pauli, random_unitary, random_pauli
+from qiskit.circuit.library import RXGate, RYGate, RZGate, RZZGate, RZXGate
+from qiskit.quantum_info import random_clifford, Operator, Pauli, random_pauli
 
-from duplicate_utils import lift_duplicate_parameters
-from experiments_utils import Experiment
-from wave_expansion import CliffordPhi, PauliRotation, Loss, TrigonometricPolynomial, CliffordPhiVQA, FourierMode, \
-    PauliCircuit, FourierComputation, PauliSpan, PauliSpace
+from wave_expansion import PauliCircuit, FourierComputation, PauliSpace
 
 
 def random_clifford_phi(num_qubits, num_parametric_gates, num_duplicate_parameters=0, seed=0):

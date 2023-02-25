@@ -8,8 +8,15 @@ from qiskit.circuit import Parameter
 from qiskit.circuit.library import PauliEvolutionGate
 from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Statevector, DensityMatrix, SparsePauliOp, Operator, \
     pauli_basis, random_pauli
-from scipy.special import binom
 from tqdm import tqdm
+
+from experiments_utils import random_node_distribution, random_norm_distribution
+
+
+# TODO
+# - Estimate functional norm as well as block norm
+# - Estimate number of terms from monte-carlo
+# - Profile runtime. How many nodes are processed?
 
 
 class PauliCircuit:
@@ -21,6 +28,10 @@ class PauliCircuit:
     @property
     def num_qubits(self):
         return self.paulis[0].num_qubits
+
+    @property
+    def num_paulis(self):
+        return len(self.paulis)
 
     def default_parameters(self):
         return [Parameter(f'x{i}') for i in range(len(self.paulis))]
@@ -361,6 +372,38 @@ class FourierComputation:
             progress_bar.set_postfix_str(f'(relative: {relative:.2%}, absolute: {absolute:.2g}, remaining: {remaining:.2g})')
             if len(self.incomplete_nodes) == 0:
                 break
+
+    def sample(self, num_samples=1000, seed=0):
+        node_stats = np.zeros(self.pauli_space.num_paulis+1)
+        np.random.seed(seed)
+        seeds = np.random.randint(0, 2**32, num_samples)
+        for seed in seeds:
+            sample_level = self.single_sample(seed)
+            node_stats[sample_level] += 1
+        return node_stats
+
+    def single_sample(self, seed):
+        np.random.seed(seed)
+        node = FourierComputationNode(self.pauli_circuit.num_paulis, self.observable, ())
+        node.remove_commuting_paulis(self.pauli_space)
+        branch_length = 0
+        while node.num_paulis > 0:
+            random_bool = np.random.randint(2)
+            if random_bool:
+                node.observable = node.observable.compose(self.pauli_space.paulis[node.num_paulis-1])
+            node.num_paulis -= 1
+            node.remove_commuting_paulis(self.pauli_space)
+            branch_length += 1
+        return branch_length
+
+    def estimate_node_count(self, num_samples=1000, seed=0):
+        norm_stats = self.sample(num_samples=num_samples, seed=seed)
+        # Turn into a probability distribution
+        norm_stats /= norm_stats.sum()
+        norm_stats = np.trim_zeros(norm_stats, trim='b')
+
+        node_stats = norm_stats * 2**np.arange(len(norm_stats))
+        return node_stats.sum()
 
     def iteration(self, incomplete_nodes, complete_nodes, check_admissibility):
         if not incomplete_nodes:
