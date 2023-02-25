@@ -1,0 +1,75 @@
+\documentclass[twocolumn, amsfonts, amssymb, aps, nofootinbib]{revtex4-2}
+\raggedbottom
+\usepackage[T1]{fontenc}
+\usepackage{tgtermes}
+\usepackage{amsmath}
+\usepackage{empheq}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[braket, qm]{qcircuit}
+\usepackage{braket}
+\usepackage{hyperref}
+\usepackage{placeins}
+\usepackage{xcolor}
+\usepackage{soul}
+\usepackage{tikz}
+\hypersetup{
+	colorlinks   = true, %Colours links instead of ugly boxes
+	urlcolor     = blue, %Colour for external hyperlinks
+	linkcolor    = blue, %Colour of internal links
+	citecolor   = red %Colour of citations
+}
+
+\newcommand{\CZ}{\textsf{CZ }}
+\newcommand{\CX}{\textsf{CNOT }}
+\newcommand{\CP}{\textsf{CP }}
+\newcommand{\T}{\textsf{T }}
+\newcommand{\tgate}[1]{\textcolor{blue}{#1}}
+\newcommand{\cx}[1]{C${}^{#1}$X}
+\newcommand{\cz}[1]{C${}^{#1}$Z}
+\newcommand{\package}[1]{\textrm {#1 }}
+\newcommand{\cpflow}{\package{CPFlow}}
+\newcommand{\static}{\textsc{static }}
+\newcommand{\adaptive}{\textsc{adaptive }}
+\newcommand{\param}[1]{\texttt{#1}}
+\newcommand{\teal}[1]{{\color{Teal} #1}}
+
+\newcommand{\comment}[1]{\textcolor{red}{#1}}
+
+\begin{document}
+
+\title{Efficient variational synthesis of quantum circuits with coherent multi-start optimization}
+
+\author{Nikita A. Nemkov}\email{nnemkov@gmail.com}
+\affiliation{Russian Quantum Center, Skolkovo, Moscow 143026, Russia}
+\affiliation{National University of Science and Technology ``MISIS”, Moscow 119049, Russia}
+\author{Evgeniy O. Kiktenko}
+\affiliation{Russian Quantum Center, Skolkovo, Moscow 143026, Russia}
+\affiliation{National University of Science and Technology ``MISIS”, Moscow 119049, Russia}
+\author{Ilia A. Luchnikov}
+\affiliation{Russian Quantum Center, Skolkovo, Moscow 143026, Russia}
+\affiliation{National University of Science and Technology ``MISIS”, Moscow 119049, Russia}
+\author{Aleksey K. Fedorov}\email{akf@rqc.ru}
+\affiliation{Russian Quantum Center, Skolkovo, Moscow 143026, Russia}
+\affiliation{National University of Science and Technology ``MISIS”, Moscow 119049, Russia}
+
+\begin{abstract}
+We consider the problem of the variational quantum circuit synthesis into a gate set consisting of the \CX gate and arbitrary single-qubit (1q) gates, with the primary objective being the minimization of the \CX count. First, we note that along with the discrete architecture search, suffering from the combinatorial explosion of complexity, optimization over 1q gates can also be a crucial roadblock due to the omnipresence of local minimums (well known in the context of variational quantum algorithms but apparently underappreciated in the context of the variational compiling). Taking the issue seriously, we make an extensive search over the initial conditions an essential part of our approach.
+Another key idea we propose is to use parametrized two-qubit (2q) controlled phase gates, which can interpolate between the identity gate and the \CX gate, and allow a continuous relaxation of the discrete architecture search, which can be executed jointly with the optimization over 1q gates. This coherent optimization of the architecture together with 1q gates appears to work surprisingly well in practice, sometimes even outperforming optimization over 1q gates alone (for fixed optimal architectures).
+As illustrative examples and applications we derive 8 \CX and \T depth 3 decomposition of the 3q Toffoli gate on the nearest-neighbor topology, rediscover known best decompositions of the 4q Toffoli gate on all 4q topologies including a  1 \CX gate improvement on the star-shaped topology, and propose decomposition of the 5q Toffoli gate on the nearest-neighbor topology with 48 \CX gates. We also benchmark the performance of our approach on a number of 5q quantum circuits from the ibm\_qx\_mapping database showing that it is highly competitive with the existing software. The algorithm developed in this work is available as a Python package \cpflow.
+\end{abstract}
+
+\maketitle
+
+\tableofcontents
+
+\section{Introduction}
+\section{Parameterized quantum circuits}
+
+asdfas
+
+\bibliographystyle{utcaps_edited.bst}
+\bibliography{library.bib}
+
+\end{document}
