@@ -9,8 +9,8 @@ from qiskit.quantum_info import Operator, Statevector, random_statevector, rando
 
 from experiments_utils import Experiment
 from jax_utils import jax_tensor, jax_fourier_mode, jax_loss
-from test_wave_expansion import random_clifford_phi
-from wave_expansion import CliffordPhi, Loss, CliffordPhiVQA
+from test_fourier_vqa import random_clifford_phi
+from fourier_vqa import CliffordPhi, Loss, CliffordPhiVQA
 
 
 def equal_up_to_global_phase(s0, s1):

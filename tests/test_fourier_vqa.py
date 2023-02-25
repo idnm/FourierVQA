@@ -6,7 +6,7 @@ from qiskit.circuit import Parameter
 from qiskit.circuit.library import RXGate, RYGate, RZGate, RZZGate, RZXGate
 from qiskit.quantum_info import random_clifford, Operator, Pauli, random_pauli
 
-from wave_expansion import PauliCircuit, FourierComputation, PauliSpace
+from fourier_vqa import PauliCircuit, FourierComputation, PauliSpace
 
 
 def random_clifford_phi(num_qubits, num_parametric_gates, num_duplicate_parameters=0, seed=0):

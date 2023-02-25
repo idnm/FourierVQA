@@ -1,1 +1,1 @@
-import wave_expansion
+import fourier_vqa

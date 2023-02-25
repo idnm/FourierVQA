@@ -6,7 +6,7 @@ import numpy as np
 from jax import vmap
 from qiskit.quantum_info import Statevector, Pauli, Clifford
 
-from wave_expansion import CliffordPhi, TrigonometricPolynomial, CliffordPhiVQA
+from fourier_vqa import CliffordPhi, TrigonometricPolynomial, CliffordPhiVQA
 
 
 def bind_single(all_parameters, parameters, i):
