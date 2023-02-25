@@ -9,8 +9,6 @@ from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Statevector, O
     pauli_basis, random_pauli
 from tqdm import tqdm
 
-from experiments_utils import random_node_distribution, random_norm_distribution
-
 
 # TODO
 # - Estimate functional norm as well as block norm
@@ -405,7 +403,7 @@ class FourierComputation:
         norm_stats /= norm_stats.sum()
         norm_stats = np.trim_zeros(norm_stats, trim='b')
 
-        node_stats = norm_stats * 2**np.arange(len(norm_stats))
+        node_stats = norm_stats * 2.**np.arange(len(norm_stats))
         return node_stats.sum()
 
     def iteration(self, incomplete_nodes, complete_nodes, check_admissibility):
@@ -466,9 +464,6 @@ class FourierComputation:
 
         plt.scatter(range(M + 1), np.array(self.node_stats()) / (3 / 2) ** M)
         plt.scatter(range(M + 1), self.norm_stats())
-
-        plt.plot(random_node_distribution(M), linestyle='--')
-        plt.plot(random_norm_distribution(M), linestyle='--')
 
 
 class FourierComputationNode:

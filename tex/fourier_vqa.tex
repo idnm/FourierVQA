@@ -23,7 +23,6 @@
 
 \newcommand{\CZ}{\textsf{CZ }}
 \newcommand{\CX}{\textsf{CNOT }}
-\newcommand{\CP}{\textsf{CP }}
 \newcommand{\T}{\textsf{T }}
 \newcommand{\tgate}[1]{\textcolor{blue}{#1}}
 \newcommand{\cx}[1]{C${}^{#1}$X}
@@ -37,6 +36,7 @@
 
 \newcommand{\comment}[1]{\textcolor{red}{#1}}
 
+\newcommand{\CP}{Clifford+Pauli}
 \begin{document}
 
 \title{Efficient variational synthesis of quantum circuits with coherent multi-start optimization}
@@ -66,8 +66,25 @@ As illustrative examples and applications we derive 8 \CX and \T depth 3 decompo
 
 \section{Introduction}
 \section{Parameterized quantum circuits}
-
-asdfas
+\begin{itemize}
+	\item Definition of PQC
+	\item Trigonometric expansion of PQC
+	\item Definition of loss function
+	\item Fourier expansion of loss function
+	\item Coefficients in Fourier expansion as averages
+	\item Hardness of computing the Fourier expansion
+\end{itemize}
+\section{\CP{} variational circuits}
+\begin{itemize}
+	\item Definition of \CP{} variational circuits.
+	\item Computation of averages over \CP{} circuits.
+	\item An algorithm for computing the Fourier expansion of a \CP{} circuit.
+	\item Number of terms, invariants.
+	\item Truncated Fourier expansion as approximation
+	\item Difficultly of estimating pointwise accuracy.
+\end{itemize}
+\section{Estimating complexity for random circuits}
+\section{Estimating complexity for local circuits}
 
 \bibliographystyle{utcaps_edited.bst}
 \bibliography{library.bib}

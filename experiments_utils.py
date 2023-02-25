@@ -1,24 +1,180 @@
+import os
+
+import dill
 import numpy as np
+from matplotlib import pyplot as plt
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
+from qiskit.quantum_info import random_pauli, Pauli
 from scipy.special import binom
+from tqdm import tqdm
+
+from fourier_vqa import PauliCircuit, FourierComputation
 
 
-def linear_ansatz_circuit(num_qubits, depth):
+def save_experiment(experiment, save_to=None):
+    if experiment.save_to:
+        save_to = experiment.save_to
+    os.makedirs(os.path.dirname(save_to), exist_ok=True)
+    with open(save_to, 'wb') as f:
+        dill.dump(experiment, f)
+
+
+def load_experiment(load_from):
+    with open(load_from, 'rb') as f:
+        return dill.load(f)
+
+
+class NodeDistributionExperiment:
+    def __init__(self, num_qubits, num_paulis, num_samples, save_to=None):
+        self.num_qubits = num_qubits
+        self.num_paulis = num_paulis
+        self.num_samples = num_samples
+        self.all_node_samples = None
+        if save_to is None:
+            save_to = f'results/NDE_{num_qubits}_{num_paulis}_{num_samples}'
+        self.save_to = save_to
+
+    def run(self, seed=0):
+        all_node_samples = []
+
+        np.random.seed(seed)
+        seeds = np.random.randint(0, 10 ** 6, size=self.num_samples + 1)
+
+        for seed in tqdm(seeds[:-1]):
+            pauli_circuit = PauliCircuit.random(self.num_qubits, self.num_paulis, seed=seed)
+            observable = random_pauli(self.num_qubits, seed=seeds[-1])
+
+            fourier_computation = FourierComputation(pauli_circuit, observable)
+            fourier_computation.run(check_admissible=False, verbose=False)
+
+            all_node_samples.append(fourier_computation.order_statistics())
+
+        self.all_node_samples = np.array(all_node_samples)
+
+    def node_stats(self):
+        M = self.num_paulis
+        normilized_node_samples = self.all_node_samples / (3 / 2) ** M
+
+        node_means = np.mean(normilized_node_samples, axis=0)
+        node_variations = np.std(normilized_node_samples, axis=0)
+
+        return node_means, node_variations
+
+    def norm_stats(self):
+        M = self.num_paulis
+        all_norm_samples = self.all_node_samples * 2. ** (-np.arange(M + 1))
+
+        norm_means = np.mean(all_norm_samples, axis=0)
+        norm_variations = np.std(all_norm_samples, axis=0)
+
+        return norm_means, norm_variations
+
+    def plot(self):
+        M = self.num_paulis
+
+        node_means, node_variations = self.node_stats()
+        norm_means, norm_variations = self.norm_stats()
+
+        c_node = 'blue'
+        c_norm = 'orange'
+
+        plt.plot(range(M + 1), node_means, color=c_node);
+        plt.plot(range(M + 1), norm_means, color=c_norm);
+
+        plt.plot(range(M + 1), random_node_distribution(M), color=c_node, linestyle='--')
+        plt.plot(range(M + 1), random_norm_distribution(M), color=c_norm, linestyle='--')
+
+        plt.fill_between(range(M + 1), node_means - node_variations, node_means + node_variations, alpha=0.75,
+                         color=c_node);
+        plt.fill_between(range(M + 1), norm_means - norm_variations, norm_means + norm_variations, alpha=0.75,
+                         color=c_norm);
+
+        plt.title(f'num_qubits={self.num_qubits}, num_paulis={self.num_paulis}, num_samples={self.num_samples}')
+
+
+class QAOA:
+    def __init__(self, graph, num_layers):
+        self.graph = graph
+        self.num_qubits = len(graph.nodes)
+        self.num_layers = num_layers
+
+    def circuit(self):
+        qc = QuantumCircuit(self.num_qubits)
+
+        # Hadamard gates
+        for n in range(qc.num_qubits):
+            qc.h(n)
+
+        for p in range(self.num_layers):
+            self.add_layer(qc, p)
+
+        return qc
+
+    def observables(self):
+
+        labels = []
+        for edge in self.graph.edges:
+            i, j = edge
+            label = ['I'] * self.num_qubits
+            label[i] = 'Z'
+            label[j] = 'Z'
+            labels.append(''.join(label))
+
+        return [Pauli(label) for label in labels]
+
+    def add_layer(self, qc, p):
+        x_parameters = [Parameter(f'x_{p}_{n}') for n in range(self.num_qubits)]
+        z_parameters = [Parameter(f'z_{p}_{e}') for e in range(len(self.graph.edges))]
+
+        for edge, z in zip(self.graph.edges, z_parameters):
+            i, j = edge
+            qc.rzz(z, i, j)
+
+        for n, x in enumerate(x_parameters):
+            qc.rx(x, n)
+
+
+def two_local_circuit(num_qubits, num_paulis):
+    if num_paulis < 2*num_qubits:
+        missing_parameters = 0
+        parameters0 = [Parameter(f'x_0{i}') for i in range(num_paulis)]
+        parameters = []
+    else:
+        missing_parameters = (num_paulis-2*num_qubits) % 4
+        parameters0 = [Parameter(f'x_0{i}') for i in range(2 * num_qubits, num_paulis)]
+        parameters = [Parameter(f'x{i}') for i in range(num_paulis-2*num_qubits)] + [0] * missing_parameters
+    blocks = int(len(parameters) / 4)
+
+    print(missing_parameters)
+    print(parameters0)
+    print(parameters)
+    print(blocks)
+
     qc = QuantumCircuit(num_qubits)
-    for i in range(num_qubits):
-        qc.rx(Parameter(f'x_0{i}'), i)
-        qc.rz(Parameter(f'z_0{i}'), i)
 
-    i = 0
-    for d in range(1, depth + 1):
-        i = i % num_qubits
-        j = (i + 1) % num_qubits
-        qc.cz(i, j)
-        for k in (i, j):
-            qc.rx(Parameter(f'x_{d}{k}'), k)
-            qc.rz(Parameter(f'z_{d}{k}'), k)
-        i += 1
+    for n in range(num_qubits):
+        qc.rx(parameters0[n], n)
+        qc.rz(parameters0[num_qubits + n], n)
+
+    n = 0
+    for b in range(blocks):
+        p = parameters[b * 4:(b + 1) * 4]
+
+        n0 = n
+        n1 = (n + 1) % num_qubits
+
+        qc.cz(n0, n1)
+        if p[0]:
+            qc.rx(p[0], n0)
+        if p[1]:
+            qc.rz(p[1], n0)
+        if p[2]:
+            qc.rx(p[2], n1)
+        if p[3]:
+            qc.rz(p[3], n1)
+
+        n = (n + 1) % num_qubits
 
     return qc
 
