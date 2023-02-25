@@ -1,10 +1,10 @@
 from functools import partial
 from typing import Union
 
+import jax.numpy as jnp
 import numpy as np
 from jax import vmap
 from qiskit.quantum_info import Statevector, Pauli, Clifford
-import jax.numpy as jnp
 
 from wave_expansion import CliffordPhi, TrigonometricPolynomial, CliffordPhiVQA
 

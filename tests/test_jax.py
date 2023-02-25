@@ -1,12 +1,11 @@
-import numpy as np
-import jax.numpy as jnp
 import jax
+import jax.numpy as jnp
+import numpy as np
 from jax import vmap, jit
-from matplotlib import pyplot as plt
 from mynimize import OptOptions, mynimize
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
-from qiskit.quantum_info import Operator, Statevector, random_clifford, random_statevector, random_unitary
+from qiskit.quantum_info import Operator, Statevector, random_statevector, random_unitary
 
 from experiments_utils import Experiment
 from jax_utils import jax_tensor, jax_fourier_mode, jax_loss

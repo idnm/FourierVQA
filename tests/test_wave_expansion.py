@@ -63,9 +63,9 @@ def test_fourier_computation_plain():
 
                 try:
                     fourier_computation = FourierComputation(pauli_circuit, observable)
-                    fourier_computation.run(check_admissible=False)
+                    fourier_computation.run(check_admissible=False, verbose=False)
                 except ValueError as e:
-                    print(e)
+                    # Occurs when all Pauli operators have no X components.
                     continue
 
                 params = np.random.rand(num_parameters)
@@ -85,9 +85,8 @@ def test_fourier_computation_with_filtering():
 
                 try:
                     fourier_computation = FourierComputation(pauli_circuit, observable)
-                    fourier_computation.run(check_admissible=True)
+                    fourier_computation.run(check_admissible=True, verbose=False)
                 except ValueError as e:
-                    print(e)
                     continue
 
                 params = np.random.rand(num_parameters)
@@ -152,23 +151,3 @@ def test_pauli_space():
         assert pauli_space.list_decomposition(pauli_space.update_decomposition(decomposition, 0)) == [2]
         assert pauli_space.list_decomposition(pauli_space.update_decomposition(decomposition, 2)) == [0]
         assert pauli_space.list_decomposition(pauli_space.update_decomposition(decomposition, 4)) == [0, 2, 4]
-
-
-def test_output():
-    num_qubits = 20
-    num_parameters = 40
-
-    pauli_circuit = PauliCircuit.random(num_qubits, num_parameters)
-    observable = random_pauli(num_qubits, seed=2)
-
-    fourier_computation = FourierComputation(pauli_circuit, observable)
-    fourier_computation.run(check_admissible=True)
-
-    params = np.random.rand(num_parameters)
-
-    exp_fourier = fourier_computation.evaluate_loss_at(params)
-    # exp_circ = pauli_circuit.expectation_value(observable, params)
-
-    # print('check', np.allclose(exp_circ, exp_fourier))
-    # print('exp_circ', exp_circ)
-    # print('exp_fourier', exp_fourier)
