@@ -13,7 +13,11 @@ from tqdm import tqdm
 # TODO
 # - Estimate functional norm as well as block norm
 # - Estimate number of terms from monte-carlo
+# - Estimate number of terms from restricted width
+# - Improved filtering algorithms?
 # - Profile runtime. How many nodes are processed?
+# -* Can make all computations JAXable?
+# -* Can parallelize them for GPU?
 
 
 class PauliCircuit:

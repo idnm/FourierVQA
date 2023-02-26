@@ -179,6 +179,26 @@ def two_local_circuit(num_qubits, num_paulis):
     return qc
 
 
+def random_local_pauli(num_qubits, weight, seed=0):
+    np.random.seed(seed)
+    w = 0
+    while w < weight:
+        seed = np.random.randint(0, 2*32)
+        local_pauli = random_pauli(weight, seed=seed)
+        w = len(local_pauli.to_label().replace('I', ''))
+
+    qubits = list(np.random.choice(range(num_qubits), weight, replace=False))
+    pauli = Pauli('I'*num_qubits).compose(local_pauli, qargs=qubits)
+    return pauli
+
+
+def random_local_pauli_circuit(num_qubits, num_paulis, weight, seed=0):
+    np.random.seed(seed)
+    seeds = np.random.randint(0, 2**32, num_paulis)
+    paulis = [random_local_pauli(num_qubits, weight, seed) for seed in seeds]
+    return PauliCircuit(paulis)
+
+
 def random_node_distribution(M):
     return [binom(M, m) * 2 ** (m - M) / (3 / 2) ** M for m in range(M + 1)]
 
