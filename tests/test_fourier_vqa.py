@@ -151,3 +151,24 @@ def test_pauli_space():
         assert pauli_space.list_decomposition(pauli_space.update_decomposition(decomposition, 0)) == [2]
         assert pauli_space.list_decomposition(pauli_space.update_decomposition(decomposition, 2)) == [0]
         assert pauli_space.list_decomposition(pauli_space.update_decomposition(decomposition, 4)) == [0, 2, 4]
+
+
+def test_estimate_node_count_limited_volume():
+    num_qubits = 15
+    num_paulis = 60
+
+    fourier_computation = FourierComputation.random(num_qubits, num_paulis, seed=0)
+
+    volume_stats = fourier_computation.estimate_node_count_limited_volume(max_nodes=5000)
+    mc_stats = fourier_computation.estimate_node_count_monte_carlo(num_samples=5000)
+
+    print('\n')
+
+    print(volume_stats[:10])
+    print(mc_stats[:10])
+
+    volume_tot = volume_stats.sum()
+    mc_tot = mc_stats.sum()
+    exact = 1.5**num_paulis
+
+    print(f'vol {volume_tot:.2e}|{volume_tot/exact:.2%} mc {mc_tot:.2e}|{mc_tot/exact:.2%}')

@@ -377,20 +377,44 @@ class FourierComputation:
         norm_stats = np.trim_zeros(norm_stats, trim='b')
 
         node_stats = norm_stats * 2.**np.arange(len(norm_stats))
-        return node_stats.sum()
+        return node_stats
 
-    def estimate_node_count_limited_volume(self, max_nodes=1000, seed=0):
-        pass
+    def estimate_node_count_limited_volume(self, max_nodes=1000, seed=0, verbose=True):
+        np.random.seed(seed)
+
+        self.initialize_computation()
+        progress_bar = tqdm(range(self.pauli_space.num_paulis), disable=not verbose)
+
+        node_stats = np.zeros(self.pauli_space.num_paulis + 1)
+        current_multiplier = 1
+        for level in progress_bar:
+            num_complete_nodes = len(self.complete_nodes)
+            self.incomplete_nodes, self.complete_nodes = self.iteration(
+                self.incomplete_nodes, self.complete_nodes, check_admissibility=False)
+
+            num_completed_nodes = len(self.complete_nodes) - num_complete_nodes
+
+            num_incomplete_nodes = len(self.incomplete_nodes)
+            if num_incomplete_nodes > max_nodes:
+                self.incomplete_nodes = list(np.random.choice(self.incomplete_nodes, max_nodes, replace=False))
+                current_multiplier *= num_incomplete_nodes / max_nodes
+
+            node_stats[level] += num_completed_nodes*current_multiplier
+
+            if len(self.incomplete_nodes) == 0:
+                break
+
+        return node_stats
 
     def initialize_computation(self):
-        # Initialize the computation if it wasn't.
-        if not self.incomplete_nodes and not self.complete_nodes:
-            root = FourierComputationNode(self.pauli_space.num_paulis, self.observable, ())
-            root.remove_commuting_paulis(self.pauli_space)
-            if root.is_complete:
-                self.complete_nodes = [root]
-            else:
-                self.incomplete_nodes = [root]
+        root = FourierComputationNode(self.pauli_space.num_paulis, self.observable, ())
+        root.remove_commuting_paulis(self.pauli_space)
+        if root.is_complete:
+            self.complete_nodes = [root]
+            self.incomplete_nodes = []
+        else:
+            self.incomplete_nodes = [root]
+            self.complete_nodes = []
 
     def run(self, check_admissible=True, verbose=True):
 
