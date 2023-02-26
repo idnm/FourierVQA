@@ -12,8 +12,6 @@ from tqdm import tqdm
 
 # TODO
 # - Estimate functional norm as well as block norm
-# - Estimate number of terms from monte-carlo
-# - Estimate number of terms from restricted width
 # - Improved filtering algorithms?
 # - Profile runtime. How many nodes are processed?
 # -* Can make all computations JAXable?
@@ -426,8 +424,8 @@ class FourierComputation:
             self.incomplete_nodes, self.complete_nodes = self.iteration(
                 self.incomplete_nodes, self.complete_nodes, check_admissible)
 
-            relative, absolute, remaining = self.status()
-            progress_bar.set_postfix_str(f'(relative: {relative:.2%}, absolute: {absolute:.2g}, remaining: {remaining:.2g})')
+            covered, relative, absolute, remaining = self.status()
+            progress_bar.set_postfix_str(f'(covered: {covered:.2%}, relative: {relative:.2%}, absolute: {absolute:.2g}, remaining: {remaining:.2g})')
             if len(self.incomplete_nodes) == 0:
                 break
 
@@ -445,14 +443,17 @@ class FourierComputation:
         return new_incomplete_nodes, complete_nodes
 
     def status(self):
+        norm_covered = sum(self.norm_stats(only_nonzero=False))
         norm_found = sum(self.norm_stats(only_nonzero=True))
         norm_remaining_bound = self.bound_remaining_norm()
         try:
             relative_norm_found = norm_found/(norm_found+norm_remaining_bound)
+            relative_norm_covered = norm_covered/(norm_covered+norm_remaining_bound)
         except ZeroDivisionError:
+            relative_norm_covered = 1
             relative_norm_found = 1
 
-        return relative_norm_found, norm_found, norm_remaining_bound
+        return relative_norm_covered, relative_norm_found, norm_found, norm_remaining_bound
 
     def bound_remaining_norm(self):
         M = self.pauli_space.num_paulis
