@@ -347,37 +347,6 @@ class FourierComputation:
         observable = random_pauli(num_qubits, seed=seeds[1])
         return FourierComputation(pauli_circuit, observable)
 
-    def run(self, check_admissible=True, max_order=None, verbose=True):
-
-        # Initialize the computation if it wasn't.
-        if not self.incomplete_nodes and not self.complete_nodes:
-            root = FourierComputationNode(self.pauli_space.num_paulis, self.observable, ())
-            root.remove_commuting_paulis(self.pauli_space)
-            if root.is_complete:
-                self.complete_nodes = [root]
-            else:
-                self.incomplete_nodes = [root]
-            self.num_iterations = 0
-
-        # If not provided, set max order to the number of parameters.
-        if not max_order:
-            max_order = self.pauli_space.num_paulis
-
-        # If iterations exist number adjust the number of new iterations
-        num_iterations = max_order-self.num_iterations
-
-        # Run recursive algorithm. Each iteration computes all Fourier terms of at the next order.
-        progress_bar = tqdm(range(num_iterations), disable=not verbose)
-        for _ in progress_bar:
-            self.num_iterations += 1
-            self.incomplete_nodes, self.complete_nodes = self.iteration(
-                self.incomplete_nodes, self.complete_nodes, check_admissible)
-
-            relative, absolute, remaining = self.status()
-            progress_bar.set_postfix_str(f'(relative: {relative:.2%}, absolute: {absolute:.2g}, remaining: {remaining:.2g})')
-            if len(self.incomplete_nodes) == 0:
-                break
-
     def sample(self, num_samples=1000, seed=0):
         node_stats = np.zeros(self.pauli_space.num_paulis+1)
         np.random.seed(seed)
@@ -401,7 +370,7 @@ class FourierComputation:
             branch_length += 1
         return branch_length
 
-    def estimate_node_count(self, num_samples=1000, seed=0):
+    def estimate_node_count_monte_carlo(self, num_samples=1000, seed=0):
         norm_stats = self.sample(num_samples=num_samples, seed=seed)
         # Turn into a probability distribution
         norm_stats /= norm_stats.sum()
@@ -409,6 +378,34 @@ class FourierComputation:
 
         node_stats = norm_stats * 2.**np.arange(len(norm_stats))
         return node_stats.sum()
+
+    def estimate_node_count_limited_volume(self, max_nodes=1000, seed=0):
+        pass
+
+    def initialize_computation(self):
+        # Initialize the computation if it wasn't.
+        if not self.incomplete_nodes and not self.complete_nodes:
+            root = FourierComputationNode(self.pauli_space.num_paulis, self.observable, ())
+            root.remove_commuting_paulis(self.pauli_space)
+            if root.is_complete:
+                self.complete_nodes = [root]
+            else:
+                self.incomplete_nodes = [root]
+
+    def run(self, check_admissible=True, verbose=True):
+
+        self.initialize_computation()
+
+        # Run recursive algorithm. Each iteration computes all Fourier terms of at the next order.
+        progress_bar = tqdm(range(self.pauli_space.num_paulis), disable=not verbose)
+        for _ in progress_bar:
+            self.incomplete_nodes, self.complete_nodes = self.iteration(
+                self.incomplete_nodes, self.complete_nodes, check_admissible)
+
+            relative, absolute, remaining = self.status()
+            progress_bar.set_postfix_str(f'(relative: {relative:.2%}, absolute: {absolute:.2g}, remaining: {remaining:.2g})')
+            if len(self.incomplete_nodes) == 0:
+                break
 
     def iteration(self, incomplete_nodes, complete_nodes, check_admissibility):
         if not incomplete_nodes:
