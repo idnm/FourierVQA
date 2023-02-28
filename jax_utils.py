@@ -6,7 +6,44 @@ import numpy as np
 from jax import vmap
 from qiskit.quantum_info import Statevector, Pauli, Clifford
 
-from fourier_vqa import CliffordPhi, TrigonometricPolynomial, CliffordPhiVQA
+
+def monomial(x, power):
+    return jnp.product(jnp.cos(x) ** (1 - power) * jnp.sin(x) ** power)
+
+
+def monomial_array(order, p):
+    return vmap(partial(monomial, p))(TrigonometricPolynomial.binary_grid(order))
+
+
+def all_monomial_arrays(all_parameters, num_parameters, order):
+    parameter_configurations = list(CliffordPhiVQA.parameter_configurations(num_parameters, order))
+    parameter_tuples = all_parameters[jnp.array(parameter_configurations)]
+    return vmap(partial(monomial_array, order))(parameter_tuples)
+
+
+def jax_fourier_mode(fourier_mode):
+    order = len(list(fourier_mode.poly_dict.keys())[0])
+    if order == 0:
+        return lambda _: fourier_mode.poly_dict[()].evaluate_loss_at([])  # At order=0 return constant function
+
+    num_parameters = max(max(fourier_mode.poly_dict.keys())) + 1
+    coefficients = jnp.array([fourier_mode.poly_dict[configuration].coefficients for configuration in
+                              CliffordPhiVQA.parameter_configurations(num_parameters, order)])
+
+    def f(p):
+        return (coefficients * all_monomial_arrays(p, num_parameters, order)).sum()
+
+    return f
+
+
+def jax_loss(qc, hamiltonian):
+    evolved_state = jax_tensor(qc, initial_state='0')
+
+    def loss_func(parameters):
+        state = evolved_state(parameters)
+        return jnp.real(state.conj() @ hamiltonian.to_matrix() @ state)
+
+    return loss_func
 
 
 def bind_single(all_parameters, parameters, i):
@@ -114,41 +151,4 @@ def apply_gate_to_tensor(gate, tensor, placement, num_qubits):
     return jnp.transpose(contraction, axes=trans)
 
 
-def monomial(p, power):
-    return jnp.product(jnp.cos(p) ** (1 - power) * jnp.sin(p) ** power)
-
-
-def monomial_array(order, p):
-    return vmap(partial(monomial, p))(TrigonometricPolynomial.binary_grid(order))
-
-
-def all_monomial_arrays(all_parameters, num_parameters, order):
-    parameter_configurations = list(CliffordPhiVQA.parameter_configurations(num_parameters, order))
-    parameter_tuples = all_parameters[jnp.array(parameter_configurations)]
-    return vmap(partial(monomial_array, order))(parameter_tuples)
-
-
-def jax_fourier_mode(fourier_mode):
-    order = len(list(fourier_mode.poly_dict.keys())[0])
-    if order == 0:
-        return lambda _: fourier_mode.poly_dict[()].evaluate_loss_at([])  # At order=0 return constant function
-
-    num_parameters = max(max(fourier_mode.poly_dict.keys())) + 1
-    coefficients = jnp.array([fourier_mode.poly_dict[configuration].coefficients for configuration in
-                              CliffordPhiVQA.parameter_configurations(num_parameters, order)])
-
-    def f(p):
-        return (coefficients * all_monomial_arrays(p, num_parameters, order)).sum()
-
-    return f
-
-
-def jax_loss(qc, hamiltonian):
-    evolved_state = jax_tensor(qc, initial_state='0')
-
-    def loss_func(parameters):
-        state = evolved_state(parameters)
-        return jnp.real(state.conj() @ hamiltonian.to_matrix() @ state)
-
-    return loss_func
 

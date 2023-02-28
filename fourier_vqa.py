@@ -11,9 +11,10 @@ from tqdm import tqdm
 
 
 # TODO
-# - Estimate functional norm as well as block norm
-# - Improved filtering algorithms?
+# - Report number of nodes in status
 # - Profile runtime. How many nodes are processed?
+# - Translate fourier expansion into JAX transformable loss.
+# - Check numerically if additional filtering is feasible?
 # -* Can make all computations JAXable?
 # -* Can parallelize them for GPU?
 
@@ -337,6 +338,14 @@ class FourierComputation:
         self.incomplete_nodes = []
         self.num_iterations = 0
 
+    @property
+    def num_qubits(self):
+        return self.pauli_circuit.num_qubits
+
+    @property
+    def num_paulis(self):
+        return self.pauli_circuit.num_paulis
+
     @staticmethod
     def random(num_qubits, num_paulis, seed=0):
         np.random.seed(seed)
@@ -418,14 +427,15 @@ class FourierComputation:
 
         self.initialize_computation()
 
-        # Run recursive algorithm. Each iteration computes all Fourier terms of at the next order.
+        # Run recursive algorithm. Each iteration computes all Fourier terms of at the next level.
         progress_bar = tqdm(range(self.pauli_space.num_paulis), disable=not verbose)
         for _ in progress_bar:
             self.incomplete_nodes, self.complete_nodes = self.iteration(
                 self.incomplete_nodes, self.complete_nodes, check_admissible)
 
-            covered, relative, absolute, remaining = self.status()
-            progress_bar.set_postfix_str(f'(covered: {covered:.2%}, relative: {relative:.2%}, absolute: {absolute:.2g}, remaining: {remaining:.2g})')
+            if verbose:
+                progress_bar.set_description(self.status(), refresh=True)
+
             if len(self.incomplete_nodes) == 0:
                 break
 
@@ -442,7 +452,7 @@ class FourierComputation:
 
         return new_incomplete_nodes, complete_nodes
 
-    def status(self):
+    def status_data(self):
         norm_covered = sum(self.norm_stats(only_nonzero=False))
         norm_found = sum(self.norm_stats(only_nonzero=True))
         norm_remaining_bound = self.bound_remaining_norm()
@@ -455,11 +465,18 @@ class FourierComputation:
 
         return relative_norm_covered, relative_norm_found, norm_found, norm_remaining_bound
 
+    def status(self):
+        covered, relative, absolute, remaining = self.status_data()
+        num_incomplete_nodes = len(self.incomplete_nodes)
+        volume = num_incomplete_nodes*self.num_qubits
+
+        return f'cov {covered:.2%} abs {absolute:.2g} rel {relative:.2%} rem {remaining:.2g} nodes {num_incomplete_nodes:.2e} vol {volume:.2e}'
+
     def bound_remaining_norm(self):
         M = self.pauli_space.num_paulis
-        orders = [node.order for node in self.incomplete_nodes]
-        order_statistic = [orders.count(m) for m in range(M + 1)]
-        return sum([n / (2 ** m) for m, n in enumerate(order_statistic)])
+        levels = [node.level for node in self.incomplete_nodes]
+        level_statistic = [levels.count(m) for m in range(M + 1)]
+        return sum([n / (2 ** m) for m, n in enumerate(level_statistic)])
 
     def evaluate_loss_at(self, parameters):
         state0 = StabilizerState(Pauli('I'*self.pauli_circuit.num_qubits))
@@ -477,10 +494,10 @@ class FourierComputation:
     def node_stats(self, only_nonzero=False):
         M = self.pauli_space.num_paulis
         if only_nonzero:
-            orders = [node.order for node in self.complete_nodes if not np.allclose(node.expectation_value, 0)]
+            levels = [node.level for node in self.complete_nodes if not np.allclose(node.expectation_value, 0)]
         else:
-            orders = [node.order for node in self.complete_nodes]
-        return [orders.count(m) for m in range(M + 1)]
+            levels = [node.level for node in self.complete_nodes]
+        return [levels.count(m) for m in range(M + 1)]
 
     def norm_stats(self, only_nonzero=False):
         return [n / (2 ** m) for m, n in enumerate(self.node_stats(only_nonzero))]
@@ -502,7 +519,7 @@ class FourierComputationNode:
         self.expectation_value = None
 
     @property
-    def order(self):
+    def level(self):
         return len(self.branch_history)
 
     @property
@@ -535,9 +552,12 @@ class FourierComputationNode:
         return node_cos
 
     def branch_sin(self, pauli_space):
+        pauli_product = self.observable.compose(pauli_space.paulis[self.num_paulis-1])
+        pauli_product.phase += 3  # Imitates multiplying by 1j but is faster.
         node_sin = FourierComputationNode(
             self.num_paulis - 1,
-            1j * self.observable.compose(pauli_space.paulis[self.num_paulis-1]),
+            pauli_product,
+            # 1j * self.observable.compose(pauli_space.paulis[self.num_paulis-1]),
             self.branch_history + ((self.num_paulis-1, 1), ))
         decomposition = pauli_space.update_decomposition(self.observable_decomposition, self.num_paulis-1)
         node_sin.observable_decomposition = decomposition
@@ -621,3 +641,7 @@ class FourierComputationNode:
         expectation_value = state.expectation_value(self.observable)
         self.expectation_value = expectation_value
         return expectation_value
+
+
+# fourier_computation = FourierComputation.random(10, 30)
+# fourier_computation.run()
