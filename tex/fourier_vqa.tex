@@ -74,6 +74,73 @@ As illustrative examples and applications we derive 8 \CX and \T depth 3 decompo
 	\item Coefficients in Fourier expansion as averages
 	\item Hardness of computing the Fourier expansion
 \end{itemize}
+\subsection{Trigonometric expansion of the unitary}
+Let $U(\pmb{\phi})$ denote a unitary matrix of a parameterized quantum circuit. Quite generally it can be written as 
+\begin{align}
+	U(\pmb{\phi})=C_0 P_1(\phi_1)C_1P_2(\phi_2)\dots P_M(\phi_M) C_M \ . \label{U phi}
+\end{align}
+Here $C_m$ are constant gates while $P_m(\phi_m)$ are parameterized. We will assume that generators of the parameterized gates square to identity so that
+\begin{align}
+	P_m(\phi)=e^{i\frac{\phi}{2} G_m}=\cos\frac{\phi}{2}+iG_m\sin\frac{\phi}{2} \ .
+\end{align}
+Applying this relation to every parametric gate in the circuit one obtains the following formal trigonometric expansion containing $2^M$ terms
+\begin{align}
+	U(\pmb{\phi})=\sum_I U_I t_I\left(\frac{\pmb{\phi}}2\right) \ . \label{U expansion}
+\end{align}
+Here $I\in\{0,1\}^M$ is a multi-index, $t_I(\pmb{\phi})$ is a multivariate trigonometric monomial of order $M$
+\begin{align}
+	t_I(\pmb{\phi})=\prod_{m=1}^M t_{I_m}(\phi_m) \label{t def} \ ,
+\end{align}
+where each term in the product is defined by
+\begin{align}
+	t_i(\phi)=\cos^{1-i}\phi\sin^i\phi=\begin{cases}\cos\phi,\quad i=0\\\sin\phi,\quad i=1\end{cases} \ ,
+\end{align}
+and matrices $U_I$ are given by the circuit unitary evaluated at specific values $U_I=U(\phi=\pi I)$.
+\subsection{Fourier expansion of the loss function}
+Most commonly the loss function $F(\pmb\phi)$ for a variational algorithm is defined by an average of some hermitian operator $H$ in the state prepared by the circuit 
+\begin{align}
+	F(\pmb{\phi})=\Braket{0|U^\dagger(\pmb\phi)HU(\pmb\phi)|0} \ .
+\end{align}
+Substituting expansion \eqref{U expansion} into the loss function gives
+\begin{align}
+	F(\pmb{\phi})=\sum_{IJ}t_I\left(\frac{\pmb \phi}{2}\right)t_J\left(\frac{\pmb \phi}{2}\right)\Braket{0|U^\dagger_IHU_J|0} \ . \label{F exp}
+\end{align}
+In contrast to the expansion of the unitary \eqref{U expansion}, expansion of the loss function when expressed as a polynomial in $\cos\phi_m,\sin\phi_m$, i.e. as the standard Fourier series, is not homogeneous. This is a consequence of the elementary trigonometric identities such as $\cos^2\frac\phi2=\frac{1+\cos\phi}{2}$. Let us organize the Fourier expansion of the loss function by level
+\begin{align}
+	F(\pmb\phi)=\sum_{m=0}^M F_m(\pmb\phi) \ .
+\end{align}
+Each level $F_m(\pmb\phi)$ only involves monomials of order $m$
+\begin{align}
+\begin{split}
+	&F_0=\text{const},\\
+	&F_1(\pmb\phi)=\sum_{i=1}^M F_i(\phi_i),\\
+	&F_2(\pmb\phi)=\sum_{i,j=1}^M F_{ij}(\phi_i,\phi_j),\\
+	&F_3(\pmb\phi)=\sum_{i,j,k=1}^M F_{ijk}(\phi_i,\phi_j, \phi_k)\dots
+\end{split}
+\end{align}
+There are $\binom{M}{m}$ possible subsets of parameters at level $m$ each giving rise to $2^m$ trigonometric monomials. Hence, the total number of independent coefficients in the Fourier expansion is
+\begin{align}
+	\sum_{m=0}^M 2^{m}\binom{M}{m}=3^M \label{3M coeffs} \ .
+\end{align}
+\subsection{Fourier terms from averages}
+Computing the Fourier series for generic loss functions appears to be a formidable task. Indeed, let us note that the constant term $F_0$ in the Fourier expansion can be thought of as the loss function averaged over all parameters
+\begin{align}
+	F_0=\Braket{F(\pmb\phi)}_{\pmb\phi}=\frac{1}{(2\pi)^M}\int_0^{2\pi}\prod_{m=1}^Md\phi_m\,\, F(\pmb\phi) \ . \label{F avg}
+\end{align}
+This relation holds because all higher levels $F_{m>0}(\pmb\phi)$ in the Fourier series trivially vanish when averaged. Higher level terms can expressed similarly. For instance, $F_i(\phi_i)=\Braket{F(\pmb\phi)-F_0}_{\pmb\phi\neq\phi_i}$, i.e. averaging over all angles except $\phi_i$ only leaves first-order monomials involving $\phi_i$. 
+
+The average \eqref{F avg} can be expressed in a succinct form using orthogonality property of trigonometric monomials $t_I$ \eqref{t def}  
+\begin{align}
+	\Braket{t_I(\pmb\phi) t_J(\pmb\phi)}_{\pmb\phi}=2^{-m}\delta_{IJ} \ . \label{t product}
+\end{align}
+Hence, averaging \eqref{F exp} yields
+\begin{align}
+	F_0=\frac{1}{2^M}\sum_{I}\Braket{0|U_I^\dagger H U_I|0} \ . \label{F0}
+\end{align}
+
+For generic circuits already evaluation of $F_0$ seems to be out of reach. In terms of a classical simulation, computing any single average in \eqref{F0} is difficult on its own for a sufficiently large number of qubits. Even when the averages can be computed efficiently, via simulation or provided an access to a quantum computer, equation \eqref{F0} still requires summing $2^M$ terms, infeasible for any significant number of parameters $M$.
+
+In the next section we will show, that for a special class of quantum circuits, that we refer to as \CP{}, evaluating $F_0$ and in fact any particular monomial in the Fourier expansion is classically efficient. 
 \section{\CP{} variational circuits}
 \begin{itemize}
 	\item Definition of \CP{} variational circuits.
@@ -83,10 +150,158 @@ As illustrative examples and applications we derive 8 \CX and \T depth 3 decompo
 	\item Truncated Fourier expansion as approximation
 	\item Difficultly of estimating pointwise accuracy.
 \end{itemize}
-\section{Estimating complexity for random circuits}
-\section{Estimating complexity for local circuits}
+A single-qubit Pauli operator is simply an $X, Y, Z$ Pauli matrix or an identity, possibly with a phase $\pm1, \pm i$. An $n$-qubit Pauli operator is a tensor product of $n$ arbitrary single-qubit Pauli operators. Any two Pauli operators either commute or anti-commute $P_1P_2=\pm P_2P_1$. Clifford gates $C$ are operators that transform Pauli gates into Pauli gates $C^\dagger P C=P'$. The group of Clifford gates can be generated by the Hadamard gate $H$, $S=\sqrt{Z}$ and $\CX$. Circuits consisting only of the Clifford gates applied to the stabilizer states (of which $|0\rangle$ is an example) can be efficiently simulated classically due to the Gottesman-Knill theorem \cite{Aaronson2004}.
+
+We define \CP{} variational circuits are a subset of variational circuits \eqref{U phi} where all parametric gates have Pauli operators as generators and all constant gates are Clifford gates. Moreover, we will assume that the Hamiltonian $H$ is a Pauli operator as well. Note that Pauli rotations with generic angles are not Clifford gates, and hence \CP{} circuits can not be simulated efficiently using the stabilizer formalism. 
+
+
+We can use the commutation properties of Clifford and Pauli gates to commute all the Clifford gates to the very end of the circuit. Hence, without loss of generality we will assume that \CP{} variational circuit takes the form \comment{sum of paulis}
+\begin{align}
+	U(\pmb\phi)=P_M(\phi_M)P_{M-1}(\phi_{M-1})\dots P_1(\phi_1)
+\end{align}
+
+Now let us revisit the computation of the average loss function \eqref{F0}. Let $\mathcal{P}$ be the subgroup of Pauli group generated by Pauli generators of the circuit, then
+\begin{align}
+	F_0=\frac{1}{2^M}\sum_{P\in \mathcal{P}}\Braket{0|PHP|0} \ . \label{F0P}
+\end{align}
+We claim that this sum vanishes unless $[H, \mathcal{P}]=0$. Indeed, assume there is $P_m$ such that $P_mH=-HP_m$. Then for every term $P$ in sum \eqref{F0P} there is a term with $P'=PP_m$ giving an opposite contribution. Hence for \CP{} circuit with a Pauli Hamiltonian $H$,
+\begin{align}
+	F_0=\begin{cases} \braket{0|H|0},\quad [H, \mathcal{P}] = 0\\ 0,\qquad\qquad \text{else}\end{cases} \ .
+\end{align}
+Therefore, computing the average loss function \CP{} circuits is a trivial task for any number of qubits and any number of parameters. In fact, as we show in the following, this applies to every individual term in the full Fourier expansion. The difficulty of computing the full Fourier expansion then stems from the fact that the total number of non-vanishing coefficients is typically exponentially large in the number of parameters. In the following section, we present an efficient classical algorithm to compute Fourier expansion level by level which will both give insights into its general structure and outline simulation limitations.
+
+\section{Classical algorithm}
+\subsection{Expansion of the dressed Hamiltonian}
+\begin{figure}
+	\includegraphics[width=0.5\textwidth]{figures/tree.png}
+	\caption{A sample diagram representing recursive expansion of a dressed Hamiltonian}
+	\label{fig tree}
+\end{figure}
+
+
+Let us introduce an operator
+\begin{align}
+	H(\pmb\phi)=U^\dagger(\pmb\phi)HU(\pmb\phi)\ ,
+\end{align}
+which, following \cite{Ryabinkin2020}, we will call a dressed Hamiltonian. The loss function is the average of this operator in the vacuum state
+\begin{align}
+	 F(\pmb\phi)=\Braket{0|H(\pmb\phi)|0} \ . \label{F from H dressed}
+\end{align}
+Next we make the following simple observation
+\begin{align}
+	P(\phi)^\dagger HP(\phi)=\begin{cases} P,\quad [P, H]=0\\ P\cos\phi+iPH\sin\phi,\quad \{P,H\}=0\end{cases} \ ,
+\end{align}
+i.e. when the conjugating Pauli rotation commutes with $H$ it cancels out, while for anti-commuting Pauli rotation the result can be written as a sum of two Pauli operators. This gives a recurrence procedure to expand the dressed Hamiltonian
+\begin{align}
+H(\pmb\phi_M)=\begin{cases} H(\pmb\phi_{M-1}),\quad [P_M, H]=0\\ H(\pmb\phi_{M-1})\cos\phi_M+(iP_MH)(\pmb\phi_{M-1})\sin\phi_M \ .\end{cases} \label{H cases}
+\end{align}
+The procedure can be conveniently visualized as a binary tree, see Fig.~\ref{fig tree} for an example, which is constructed as follows. The nodes correspond to the variational circuits, specified by the current set of Pauli generators and an observable $O$, jointly denoted as $(P_1\dots P_m|O)$. If nodes observable $O$ anti-commutes with the last Pauli generator $P_m$, the node branches into two $(P_1\dots P_m|O)\to\cos\phi_m (P_1\dots P_{m-1}|O)+i\sin\phi_m (P_1\dots P_{m-1}|P_m O)$. For brevity we omit coefficients at the diagram. Branching increases the Fourier level by one. If the last Pauli generator commutes with $O$, it is simply removed $(P_1\dots P_m|O)\to (P_1\dots P_{m-1}|O)$ and the Fourier level remains unchanged. We depict this by horizontal arrows at the diagram. When there are no Pauli generators left, the node contains the final observable encoding a single coefficient in the Fourier expansion.
+
+
+The graphical representation makes obvious several distinctive features of Fourier series for \CP{} circuits. Let $l(m)$ be the number of Fourier modes at level $m$. For any \CP{} circuit and any Pauli Hamiltonian it holds
+\begin{align}
+\sum_{m=0}^M 2^{-m}l(m)=1 \ , \label{invariant}
+\end{align}
+i.e. the weighted sum of Fourier levels populations is an invariant. The maximum number of Fourier terms is upper bounded by $2^M$ (when the last level is fully populated), cf. the bound for generic circuits $3^M$ \eqref{3M coeffs}. Next, the presence of any single Fourier term at level $l$ reduces the maximum possible amount of terms at other levels. For instance, if $l(0)=1$, i.e. $F_0\neq0$, all other Fourier terms vanish. 
+\subsection{Accounting for the expectation values}
+So far we discussed the expansion of the dressed Hamiltonian. To obtain the loss function one needs to compute the expectation value \eqref{F from H dressed}. A very likely scenario is that the majority of the final Pauli observables have zero expectation value in the vacuum state and do not contribute to the loss function. We can significantly enhance the efficiency of the computation by filtering out some branches in advance.
+
+A Pauli observable $O$ has a non-zero vacuum expectation value if it contains no $X$ operators, which we will write as $O(X)=0$. 
+Assume for simplicity that the first $N$ Pauli generators $P_1\dots P_N$ form the basis in the space of $X$ strings, i.e. there is a unique way to decompose $O(X)$ as a product $O(X)=\prod_{i=1}^N P^{k_i}_i(X)$ where $k_i=0,1$. Now consider the computational node $(P_1\dots P_N|O)$. If we apply the expansion algorithm directly, up to $2^N$ terms will be generated, but only a single one can yield a non-zero vacuum expectation. Instead, we can first decompose $O(X)$ into the product of $P_i(X)$ and then check if this product is compatible with the branching rules. This yields an exponential saving for large $N$.
+
+
+Now let us lift the restriction of the first $N$ Pauli generators forming a basis. The necessary condition for $(P_1\dots P_m|O)$ to have a non-zero vacuum expectation is for $O(X)$ to be contained in the span of $P_i(X)$. Each time that another independent generator $P_m(X)$ is removed during the expansion of the dressed Hamiltonian, we can check if $O(X)$ is still contained in the $X$-space spanned by the remaining Pauli generators, and disregard the node if it is not. 
+
+\subsection{Is there a more efficient algorithm?}
+While this procedure significantly enhances the efficiency of the algorithm it is still far from optimal in the sense that there will typically be exponentially (in $N$) many nodes that fail the expectation value filtering and thus were not necessary to generate in the first place. In other words, the amount of nodes generated during the execution of the algorithm will still be exponentially larger then the number of non-zero Fourier terms in the loss function. However, coming up with a more efficient algorithms seems very challenging. Let us formalize the observation.
+
+Fourier terms in the expansion of the dressed Hamiltonian are in one to one correspondence with $M$ boolean variables $k_1,\dots, k_M$ that define whether $i$-th Pauli generator is included in the final observable or not, i.e. $O=P_1^{k_1}\dots P_M^{k_M}H$. To satisfy the branching rules each Pauli generator with $k_i\neq 0$ must anti-commute with the product of all Pauli generators to the right. This gives a quadratic binary system of equations
+\begin{align}
+	(k_i+1)\braket{P_i, H}+\sum_{j>i} k_ik_j \braket{P_i, P_j}=0 \ , \label{kikj}
+\end{align}
+where $\braket{P_i, P_j}$ is $+1$ if $\{P_i,P_j\}=1$ and 0 otherwise. The condition for $O$ to have a non-zero expectation value is 
+\begin{align}
+	H(X)+\sum_i k_i P_i(X)=0 \ . \label{kiX}
+\end{align}
+This equation contains $N$ constraints for an $N$-qubit problem.
+Essentially, our current algorithm recursively generates a space of binary variables $k_i$ compatible with the system \eqref{kikj} while testing it against the $X$-constraints \eqref{kiX} every time an independent generator is removed. It is in principle possible to reverse the order and first generate the space of binary variables $k_i$ compatible with the $X$ constraints, and then test them against the system \eqref{kikj}. This approach is always less efficient, because there are always $2^{M-N}$ solutions to the constraint \eqref{kiX} which is in fact an upper bound to the number of branches generated by the first $M-N$ steps of our current algorithm, after which we can start efficiently filtering by the expectation value. One way or another, it looks hard to bypass generating exponentially many branches that will eventually be filtered out.
+
+\subsection{Truncated Fourier series as an approximation}
+Having many terms on low Fourier levels appears to be convenient, because this partially reduces the proliferation of coefficients at subsequent levels. This is further reinforced by the observation that each individual term at a lower level contributes exponentially more to the loss function than a term at a higher level. Intuitively, this is because the average absolute value of a trigonometric monomial or order $m$ is $\left(\frac{2}{\pi}\right)^{m}$ and decays exponentially with the level. At the same time, there can be exponentially more terms at higher levels. We can quantify this trade-off by the $L^2$ norm of the loss function. From orthogonality of trigonometric monomials \eqref{t product} it follows
+\begin{align}
+	||F(\pmb\theta)||^2=\Braket{|F(\pmb\theta)|^2}_{\pmb\phi}=\sum_{m=0}^M 2^{-m}n(m) \ ,
+\end{align}
+where now $n(m)$ is the number of non-zero Fourier terms in the expansion of the loss function at level $m$, which is upper bounded by the number of non-zero terms in the expansion of the dressed Hamiltonian $n(m)\le l(m)$ ($l(m)-n(m)$ is the number of observables at level $m$ with zero expectation value). First note that using \eqref{invariant} we can then bound the $L^2$ norm of the loss function
+\begin{align}
+	||F(\pmb\theta)||^2\le 1 \ .
+\end{align}
+Now suppose we have computed first $k$ levels of the Fourier expansion and also found the quantity
+\begin{align}
+	\delta=\sum_{m=0}^k 2^{-m}l(m)
+\end{align}
+which measures how many observables resides at the first $k$ levels of the dressed Hamiltonian expansion. If $\delta$ is sufficiently close to 1, the Fourier series truncated to the first $k$ levels $F^{(k)}(\pmb\theta)$ gives a good approximation to the full loss function
+\begin{align}
+	||F^{(k)}(\pmb\theta)-F(\pmb\theta)||^2\le \sum_{m=k+1}^M 2^{-m}n(m)\le 1-\delta \ . \label{delta}
+\end{align}
+It is therefore important to understand typical distributions of Fourier terms in the loss functions, a problem we now turn to.
+
+\section{Distribution of Fourier coefficients}
+\begin{itemize}
+	\item Distribution of nodes for fully random circuits
+	\item Distribution of nodes for local circuits with random observables
+	\item Distribution of nodes for QAOA circuits
+	\item Distribution of nodes for random local circuits
+	\item Estimation of nodes using Monte-Carlo sampling and truncated branching
+\end{itemize}
+\subsection{Random circuits}
+\begin{figure}
+	\includegraphics[width=0.5\textwidth]{figures/random.png}
+	\caption{Distribution of the number terms $l(m)$ (normalized) and norm $\nu(m)$ in Fourier expansion of the dressed Hamiltonian for random circuits. Datapoints are averages over 20 random circuits, filled areas quantify standard deviations, solid curves are theoretical predictions. Note that the distribution of norm is computed from the distribution of terms $\nu(m)=2^{-m}l(m)$.}
+	\label{fig random}
+\end{figure}
+We first study the case where all the Pauli generators, as well as the observable, are random Pauli operators with the support on all of the qubits. In that case, it is simple to give probabilistic estimates for expected distribution of Fourier terms in the loss function. Furthermore, for sufficiently deep circuits we expect that the branching process will eventually lead to computational nodes with effectively random observables, and then the scaling we now discuss will apply.
+
+When all $P_i$ and $H$ are random, the probability of branching at each computational node is 1/2. Therefore, on average each iteration of the algorithm increases the total number of nodes $n_M$ by a factor of 3/2, leading to $n_M=\left(\frac32\right)^M$. The same reasoning applies to the number of non-zero computational nodes at each level $n_{M}(m)$, which therefore satisfies the recurrence relation $n_{M+1}(m)=\frac12 n_{M}(m)+n_{M}(m-1)$ with the solution
+\begin{align}
+	n_{M}(m)=2^{m-M}\binom{M}{m} \ .
+\end{align}
+One can check that $\sum_{m=0}^M n_{M}(m)=\left(\frac32\right)^M$. From the distribution of nodes by level we can derive the distribution of norm $\nu_{M}(m)=2^{-m}n_{M}(m)$ by level, which is given by
+\begin{align}
+	\nu_{M}(m)=2^{-M}\binom{M}{m} \ . \label{binom}
+\end{align}
+Naturally, $\sum_{m=0}^M \nu_{M}(m)=1$. At Fig.~\ref{fig random} we plot results of numerical simulations for random circuits, which convincingly agree with the estimations. 
+
+
+So far we discussed the distribution of Fourier terms in the dressed Hamiltonian, and now we turn to the loss function. Since every final observable of the dressed Hamiltonian is again a random Pauli, it has $2^{-N}$ probability of having non-zero expectation value. Therefore, the distribution of Fourier terms by level is identical, but the overall number of terms in the loss function is less by factor $2^{-N}$ compared to the dressed Hamiltonian.
+
+We can now address the question of how many nodes must be included to cover most of the norm in the loss function. The binomial distribution \eqref{binom} is symmetric and peaked at $m=\frac{M}{2}$. Thus, on average obtaining approximation with $\delta=\frac12$ \eqref{delta} entails computing $n_M(\frac{M}{2})=2^{\frac{M}2}$ terms. While in the large $M$ limit this is an exponentially small fraction of all terms $n_M$, the number of relevant terms itself is still an exponential in $M$.
+\subsection{Limits to the simulation}
+Exponential increase in the number of relevant terms with $M$ clearly limits the depth of the circuits we can address. Importantly, the property that most final observables have zero expectation values in turn limits the number of qubits $N$ we can meaningfully simulate. While in principle, the number of qubits is only limited by the simulation cost for Clifford circuits, to get a loss function which is not zero everywhere the number of Pauli rotation gates $M$ needs to increase with $N$.
+
+Indeed, there is on average $n_M=\left(\frac32\right)^M$ terms in the Fourier expansion of the dressed Hamiltonian for a random circuit. The fraction of these terms that has non-zero expectation value and hence contribute to the loss function is $r=2^{-N}n_M$. Requiring $r$ to be of order one, we find that the depth should be at least $M\sim N/\log_2\frac32$. Thanks to the subroutine filtering by the expectation value, we do not need to generate the full expansion of the dressed Hamiltonian. Assuming that the first $N$ Pauli generators are independent, we only need to produce $\left(\frac32\right)^{M-N}\approx 10^{N/8}$ nodes. With a computational budget to process $10^6$ nodes, which is at a laptop scale, the loss function for a $50$-qubit random circuit with $85$ Pauli rotation gates can be computed exactly. With resources to process $10^{12}$ nodes, which should be feasible on a computational cluster, $100$-qubit circuits with about $170$ Pauli gates can be handled.
+
+\subsection*{Beyond random circuits: QAOA case study}
+Most variational quantum circuits appearing in practice are far from random. Instead, they are usually composed of local gates acting on a few qubits each and feature local observables. Until the observable becomes sufficiently scrambled to behave like a random one, encountering an anti-commuting Pauli generator has probablity much smaller than $\frac12$ and the number of terms grows relatively slow. This allows to compute Fourier expansions for circuits with much higher depth then anticipated for the random case.
+
+As a case study we consider instances of the Quantum Approximate Optimization Algorithm (QAOA) for the MaxCut problem on regular graphs \cite{Farhi2014}. Given a graph $G$ with vertices $E_{ij}$ a single layer of QAOA consists of Pauli rotation gates $Z_iZ_j(\gamma_{ij})$ for each edge $E_{ij}$ followed by a sequence of single-qubit $X_i(\beta_i)$ gates placed on every qubit. Single layer repeated $p$ times gives an instance of $QAOA_p$ circuit. The Hamiltonian is given by the sum of all $Z$-Pauli generators $H=\sum_{E_{ij}}Z_iZ_j$.
+
+Shallow instances of QAOA allow for efficient classical computation of the loss function independently of the number of qubits. To every observable $Z_iZ_j$ one can associate a reverse light cone, containing all qubits that are connected to the observable by two-qubit gates. For graphs of bounded degree, the size of the reverse light cone does stays constant in the large $N$ limit and classical computation of the loss function never involves simulating quantum circuits larger than that size.
+
+ In the original formulation of QAOA all angles $\gamma_{ij}$ and $\beta_i$ are the same withing a single layer, but this has no consequences for our algorithm.
+
+\appendix
+\section{clarify}
+
+Each summand is of the form $F_{i,j,\dots}(\phi_i,\phi_j,\dots)=\sum_{i_1,i_2,\dots}c^{i_1,i_2,\dots}_{m_1,m_2,\dots}t_{m_1, m_2,\dots}(\phi_{m_1},\phi_{m_2},\dots)$
+\begin{align}
+F_m(\phi_m)=A_m\cos\phi_m+B_m\sin\phi_m
+\end{align}
+
+\begin{multline}
+F_{ml}(\phi_m,\phi_l)=A_{ml}\cos\phi_m\cos\phi_l+B_{ml}\cos\phi_m\sin\phi_l+\\C_{ml}\sin\phi_m\cos\phi_l+D_{ml}\sin\phi_m\sin\phi_l\dots
+\end{multline}
 
 \bibliographystyle{utcaps_edited.bst}
-\bibliography{library.bib}
+\bibliography{/home/idnm/Dropbox/hep/Sheets/library.bib}
 
 \end{document}

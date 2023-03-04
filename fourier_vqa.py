@@ -563,6 +563,19 @@ class FourierComputationNode:
         node_sin.observable_decomposition = decomposition
         return node_sin
 
+    def update_admissibility(self, pauli_space):
+        self.is_admissible = False
+
+        # If the observable was not decomposed before, decompose it now.
+        if self.observable_decomposition is None:
+            self.observable_decomposition = pauli_space.compute_decomposition(self.observable, self.num_paulis)
+
+        # If decomposition was successful.
+        if self.observable_decomposition is not None:
+            # If the number of available pauli matrices is enough for decomposition, the node is admissible.
+            if pauli_space.decomposition_requires_paulis(self.observable_decomposition) <= self.num_paulis:
+                self.is_admissible = True
+
     def branch_and_refine(self, pauli_space, check_admissibility):
 
         # Each node processes here if at the branching point. Before branching,
@@ -575,17 +588,7 @@ class FourierComputationNode:
         # and the remaining pauli operators are insufficient to decompose any observable.
 
         if check_admissibility and pauli_space.rank(self.num_paulis) < pauli_space.dim:
-            self.is_admissible = False
-
-            # If the observable was not decomposed before, decompose it now.
-            if self.observable_decomposition is None:
-                self.observable_decomposition = pauli_space.compute_decomposition(self.observable, self.num_paulis)
-
-            # If decomposition was successful.
-            if self.observable_decomposition is not None:
-                # If the number of available pauli matrices is enough for decomposition, the node is admissible.
-                if pauli_space.decomposition_requires_paulis(self.observable_decomposition) <= self.num_paulis:
-                    self.is_admissible = True
+            self.update_admissibility(pauli_space)
 
             # If the node is not admissible, in the end, abort the computation.
             if not self.is_admissible:
@@ -637,10 +640,13 @@ class FourierComputationNode:
         return res
 
     def compute_expectation_value(self): 
-        state = StabilizerState(Pauli('I'*self.observable.num_qubits))
-        expectation_value = state.expectation_value(self.observable)
-        self.expectation_value = expectation_value
-        return expectation_value
+        # state = StabilizerState(Pauli('I'*self.observable.num_qubits))
+        # expectation_value = state.expectation_value(self.observable)
+
+        absolute_expectation_value = not np.any(self.observable.x)  # Observable should have no X operators.
+        sign = -1*(self.observable.phase == 2)  # Phases 1 and 3 correspond to -1j and 1j and never appear. Phase 2 is -1.
+        self.expectation_value = absolute_expectation_value * sign
+        # return expectation_value
 
 
 # fourier_computation = FourierComputation.random(10, 30)
