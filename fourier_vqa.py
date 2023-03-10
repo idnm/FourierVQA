@@ -7,6 +7,7 @@ from qiskit.circuit import Parameter
 from qiskit.circuit.library import PauliEvolutionGate
 from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Statevector, Operator, \
     pauli_basis, random_pauli
+from scipy.special import binom
 from tqdm import tqdm
 
 
@@ -321,7 +322,7 @@ class PauliSpace:
         return decomposition ^ update
 
 
-class FourierComputation:
+class FourierExpansionVQA:
     def __init__(self, pauli_circuit, pauli_observable):
         self.pauli_circuit = pauli_circuit
         pauli_space = PauliSpace(pauli_circuit.paulis)
@@ -352,39 +353,50 @@ class FourierComputation:
         seeds = np.random.randint(0, 10**6, 2)
         pauli_circuit = PauliCircuit.random(num_qubits, num_paulis, seed=seeds[0])
         observable = random_pauli(num_qubits, seed=seeds[1])
-        return FourierComputation(pauli_circuit, observable)
+        return FourierExpansionVQA(pauli_circuit, observable)
 
-    def sample(self, num_samples=1000, seed=0):
-        node_stats = np.zeros(self.pauli_space.num_paulis+1)
-        np.random.seed(seed)
-        seeds = np.random.randint(0, 2**32, num_samples)
-        for seed in seeds:
-            sample_level = self.single_sample(seed)
-            node_stats[sample_level] += 1
-        return node_stats
-
-    def single_sample(self, seed):
+    def sample(self, check_admissible, seed):
         np.random.seed(seed)
         node = FourierComputationNode(self.pauli_circuit.num_paulis, self.observable, ())
         node.remove_commuting_paulis(self.pauli_space)
-        branch_length = 0
-        while node.num_paulis > 0:
+
+        branch_is_admissible = True
+        while node.num_paulis > 0 and branch_is_admissible:
             random_bool = np.random.randint(2)
+
+            # With probability 1/2 observable is unchanged or multiplied by the next pauli.
             if random_bool:
-                node.observable = node.observable.compose(self.pauli_space.paulis[node.num_paulis-1])
-            node.num_paulis -= 1
+                node = node.branch_cos(self.pauli_space)
+            else:
+                node = node.branch_sin(self.pauli_space)
+
             node.remove_commuting_paulis(self.pauli_space)
-            branch_length += 1
-        return branch_length
+            if check_admissible and self.pauli_space.rank(node.num_paulis) < self.pauli_space.dim:
+                node.update_admissibility(self.pauli_space)
+                branch_is_admissible = node.is_admissible
 
-    def estimate_node_count_monte_carlo(self, num_samples=1000, seed=0):
-        norm_stats = self.sample(num_samples=num_samples, seed=seed)
-        # Turn into a probability distribution
-        norm_stats /= norm_stats.sum()
-        norm_stats = np.trim_zeros(norm_stats, trim='b')
+        node.compute_expectation_value()
+        return node
 
-        node_stats = norm_stats * 2.**np.arange(len(norm_stats))
-        return node_stats
+    def estimate_node_count_monte_carlo(self, num_samples=1000, check_admissible=False, seed=0):
+        np.random.seed(seed)
+        seeds = np.random.randint(0, 2**32, num_samples)
+
+        all_nodes = [self.sample(check_admissible, seed) for seed in tqdm(seeds)]
+        nonzero_nodes = [node for node in all_nodes if node.expectation_value != 0]
+
+
+        stats = []
+        for nodes in [all_nodes, nonzero_nodes]:
+            # The algorithms samples with probability proportional to the norm!
+            norm_stats = self.level_statistic(nodes, self.num_paulis)
+            norm_distribution = np.array(norm_stats) / len(all_nodes)  # In both cases we normalize on all nodes!
+            norm_distribution = np.trim_zeros(norm_distribution, trim='b')
+            node_stats = norm_distribution * 2.**np.arange(len(norm_distribution))
+            stats.append(sum(node_stats))
+
+        num_all_nodes, num_nonzero_nodes = stats
+        return num_all_nodes, num_nonzero_nodes
 
     def estimate_node_count_limited_volume(self, max_nodes=1000, seed=0, verbose=True):
         np.random.seed(seed)
@@ -397,7 +409,7 @@ class FourierComputation:
         for level in progress_bar:
             num_complete_nodes = len(self.complete_nodes)
             self.incomplete_nodes, self.complete_nodes = self.iteration(
-                self.incomplete_nodes, self.complete_nodes, check_admissibility=False)
+                self.incomplete_nodes, self.complete_nodes, check_admissible=False)
 
             num_completed_nodes = len(self.complete_nodes) - num_complete_nodes
 
@@ -423,7 +435,7 @@ class FourierComputation:
             self.incomplete_nodes = [root]
             self.complete_nodes = []
 
-    def run(self, check_admissible=True, verbose=True):
+    def compute(self, check_admissible=True, verbose=True):
 
         self.initialize_computation()
 
@@ -439,13 +451,13 @@ class FourierComputation:
             if len(self.incomplete_nodes) == 0:
                 break
 
-    def iteration(self, incomplete_nodes, complete_nodes, check_admissibility):
+    def iteration(self, incomplete_nodes, complete_nodes, check_admissible):
         if not incomplete_nodes:
             return [], complete_nodes
 
         new_incomplete_nodes = []
         for node in incomplete_nodes:
-            incomplete_nodes, completed_nodes = node.branch_and_refine(self.pauli_space, check_admissibility)
+            incomplete_nodes, completed_nodes = node.branch_and_refine(self.pauli_space, check_admissible)
 
             new_incomplete_nodes.extend(incomplete_nodes)
             complete_nodes.extend(completed_nodes)
@@ -453,8 +465,8 @@ class FourierComputation:
         return new_incomplete_nodes, complete_nodes
 
     def status_data(self):
-        norm_covered = sum(self.norm_stats(only_nonzero=False))
-        norm_found = sum(self.norm_stats(only_nonzero=True))
+        norm_covered = sum(self.stats(only_nonzero=False).norm_stats)
+        norm_found = sum(self.stats(only_nonzero=True).norm_stats)
         norm_remaining_bound = self.bound_remaining_norm()
         try:
             relative_norm_found = norm_found/(norm_found+norm_remaining_bound)
@@ -472,11 +484,16 @@ class FourierComputation:
 
         return f'cov {covered:.2%} abs {absolute:.2g} rel {relative:.2%} rem {remaining:.2g} nodes {num_incomplete_nodes:.2e} vol {volume:.2e}'
 
+    @staticmethod
+    def level_statistic(nodes, M):
+        levels = [node.level for node in nodes]
+        stats = [levels.count(m) for m in range(M + 1)]
+        return stats
+
     def bound_remaining_norm(self):
-        M = self.pauli_space.num_paulis
-        levels = [node.level for node in self.incomplete_nodes]
-        level_statistic = [levels.count(m) for m in range(M + 1)]
-        return sum([n / (2 ** m) for m, n in enumerate(level_statistic)])
+        M = self.num_paulis
+        stats = self.level_statistic(self.incomplete_nodes, M)
+        return sum([n / (2 ** m) for m, n in enumerate(stats)])
 
     def evaluate_loss_at(self, parameters):
         state0 = StabilizerState(Pauli('I'*self.pauli_circuit.num_qubits))
@@ -484,29 +501,13 @@ class FourierComputation:
 
         return sum(results)
 
-    def bound_remaining_loss(self, parameters):
-        # Not trivial since |cos(x)|+|sin(x)|< sqrt(2) and grows.
-        # Better estimates might be available.
-
-        return None
-        # return sum([np.abs(node.monomial(parameters)) for node in self.incomplete_nodes])
-
-    def node_stats(self, only_nonzero=False):
-        M = self.pauli_space.num_paulis
+    def stats(self, only_nonzero=False):
         if only_nonzero:
-            levels = [node.level for node in self.complete_nodes if not np.allclose(node.expectation_value, 0)]
+            nodes = [node for node in self.complete_nodes if node.observable != 0]
         else:
-            levels = [node.level for node in self.complete_nodes]
-        return [levels.count(m) for m in range(M + 1)]
+            nodes = self.complete_nodes
 
-    def norm_stats(self, only_nonzero=False):
-        return [n / (2 ** m) for m, n in enumerate(self.node_stats(only_nonzero))]
-
-    def visualize(self):
-        M = self.pauli_space.num_paulis
-
-        plt.scatter(range(M + 1), np.array(self.node_stats()) / (3 / 2) ** M)
-        plt.scatter(range(M + 1), self.norm_stats())
+        return FourierStats(nodes, self.num_paulis)
 
 
 class FourierComputationNode:
@@ -557,7 +558,6 @@ class FourierComputationNode:
         node_sin = FourierComputationNode(
             self.num_paulis - 1,
             pauli_product,
-            # 1j * self.observable.compose(pauli_space.paulis[self.num_paulis-1]),
             self.branch_history + ((self.num_paulis-1, 1), ))
         decomposition = pauli_space.update_decomposition(self.observable_decomposition, self.num_paulis-1)
         node_sin.observable_decomposition = decomposition
@@ -570,13 +570,13 @@ class FourierComputationNode:
         if self.observable_decomposition is None:
             self.observable_decomposition = pauli_space.compute_decomposition(self.observable, self.num_paulis)
 
-        # If decomposition was successful.
+        # If decomposition exists.
         if self.observable_decomposition is not None:
             # If the number of available pauli matrices is enough for decomposition, the node is admissible.
             if pauli_space.decomposition_requires_paulis(self.observable_decomposition) <= self.num_paulis:
                 self.is_admissible = True
 
-    def branch_and_refine(self, pauli_space, check_admissibility):
+    def branch_and_refine(self, pauli_space, check_admissible):
 
         # Each node processes here if at the branching point. Before branching,
         # we can check admissibility of the current node itself, and if admissible, of its two branches.
@@ -587,7 +587,7 @@ class FourierComputationNode:
         # Admissibility is checked if the corresponding flag is true,
         # and the remaining pauli operators are insufficient to decompose any observable.
 
-        if check_admissibility and pauli_space.rank(self.num_paulis) < pauli_space.dim:
+        if check_admissible and pauli_space.rank(self.num_paulis) < pauli_space.dim:
             self.update_admissibility(pauli_space)
 
             # If the node is not admissible, in the end, abort the computation.
@@ -649,5 +649,111 @@ class FourierComputationNode:
         # return expectation_value
 
 
-# fourier_computation = FourierComputation.random(10, 30)
-# fourier_computation.run()
+class FourierStats:
+    def __init__(self, nodes, num_paulis):
+        self.nodes = nodes
+        self.num_paulis = num_paulis
+
+        self.node_stats = self._stats_from_nodes(self.nodes, self.num_paulis)
+        self.norm_stats = self._norm_from_node_stats(self.node_stats)
+        self.node_stats_normalized = np.array(self.node_stats) / sum(self.node_stats)
+        self.norm_stats_normalized = np.array(self.norm_stats) / sum(self.norm_stats)
+        self.num_nodes = sum(self.node_stats)
+        self.num_qubits = self.nodes[0].observable.num_qubits
+
+    node_color = 'blue'
+    norm_color = 'orange'
+
+    @staticmethod
+    def _norm_from_node_stats(node_stats):
+        node_stats = np.array(node_stats)
+        norm_stats = node_stats * 2. ** (-np.arange(len(node_stats)))
+        return norm_stats
+
+    @staticmethod
+    def _stats_from_nodes(nodes, max_level):
+
+        stats = []
+        for lvl in range(max_level+1):
+            nodes_at_level = [node for node in nodes if node.level == lvl]
+            stats.append(len(nodes_at_level))
+
+        return stats
+
+    @staticmethod
+    def random_node_distribution(M):
+        return [binom(M, m) * 2 ** (m - M) / (3 / 2) ** M for m in range(M + 1)]
+
+    @staticmethod
+    def random_norm_distribution(M):
+        return [binom(M, m) * 2 ** (-M) for m in range(M + 1)]
+
+    def plot(self, plot_random=True, max_level=None):
+
+        M = len(self.node_stats) - 1
+
+        if plot_random:
+            self.plot_random(M)
+
+        if max_level is None:
+            max_level = M
+
+        self.plot_scatter(self.node_stats_normalized, self.norm_stats_normalized, max_level)
+        plt.title(f'number of  qubits={self.num_qubits}, number of paulis={self.num_paulis}')
+        plt.legend()
+
+    @staticmethod
+    def plot_scatter(node_stats, norm_stats, max_level):
+        plt.scatter(range(max_level + 1), node_stats, color=FourierStats.node_color, edgecolors='black',
+                    label='node distribution');
+        plt.scatter(range(max_level + 1), norm_stats, color=FourierStats.norm_color, edgecolors='black',
+                    label='norm distribution');
+
+        plt.grid(linestyle='--')
+        plt.ylabel('Probability', fontsize=12)
+        plt.xlabel('Level', fontsize=12)
+
+    @staticmethod
+    def plot_random(M):
+        plt.plot(range(M + 1), FourierStats.random_node_distribution(M), color=FourierStats.node_color, linewidth=2, alpha=0.9,
+                 label='random node distribution')
+        plt.plot(range(M + 1), FourierStats.random_norm_distribution(M), color=FourierStats.norm_color, linewidth=2, alpha=0.9,
+                 label='random norm distribution')
+
+    @staticmethod
+    def plot_several(samples, plot_random=True, max_level=None):
+
+        M = samples[0].num_paulis
+
+        if plot_random:
+            FourierStats.plot_random(M)
+
+        if max_level is None:
+            max_level = M
+
+        node_samples = np.array([sample.node_stats_normalized for sample in samples])
+        norm_samples = np.array([sample.norm_stats_normalized for sample in samples])
+
+        # norm_samples = all_node_samples * 2. ** (-np.arange(M + 1))
+        # normilized_node_samples = all_node_samples / all_node_samples.sum(axis=1, keepdims=True)
+
+        node_means = np.mean(node_samples, axis=0)[:max_level + 1]
+        node_variations = np.std(node_samples, axis=0)[:max_level + 1]
+
+        norm_means = np.mean(norm_samples, axis=0)[:max_level + 1]
+        norm_variations = np.std(norm_samples, axis=0)[:max_level + 1]
+
+        plt.fill_between(range(max_level + 1), node_means - node_variations, node_means + node_variations, alpha=0.5,
+                         color=FourierStats.node_color, edgecolors='black', label='node variance');
+        plt.fill_between(range(max_level + 1), norm_means - norm_variations, norm_means + norm_variations, alpha=0.5,
+                         color=FourierStats.norm_color, edgecolors='black', label='norm variance');
+
+        FourierStats.plot_scatter(node_means, norm_means, max_level)
+        # plt.scatter(range(max_level + 1), node_means, color=node_color, edgecolors='black', label='node distribution');
+        # plt.scatter(range(max_level + 1), norm_means, color=norm_color, edgecolors='black', label='norm distribution');
+
+        # plt.grid(linestyle='--')
+        # plt.ylabel('Probability', fontsize=12)
+        # plt.xlabel('Level', fontsize=12)
+        # #     plt.title(f'num_qubits={num_qubits}, num_paulis={M}, num_samples={num_samples}')
+        # plt.legend()

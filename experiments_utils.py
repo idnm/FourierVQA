@@ -9,7 +9,7 @@ from qiskit.quantum_info import random_pauli, Pauli
 from scipy.special import binom
 from tqdm import tqdm
 
-from fourier_vqa import PauliCircuit, FourierComputation
+from fourier_vqa import PauliCircuit, FourierExpansionVQA
 
 
 def save_experiment(experiment, save_to=None):
@@ -45,8 +45,8 @@ class NodeDistributionExperiment:
             pauli_circuit = PauliCircuit.random(self.num_qubits, self.num_paulis, seed=seed)
             observable = random_pauli(self.num_qubits, seed=seeds[-1])
 
-            fourier_computation = FourierComputation(pauli_circuit, observable)
-            fourier_computation.run(check_admissible=False, verbose=False)
+            fourier_computation = FourierExpansionVQA(pauli_circuit, observable)
+            fourier_computation.compute(check_admissible=False, verbose=False)
 
             all_node_samples.append(fourier_computation.order_statistics())
 
@@ -197,14 +197,6 @@ def random_local_pauli_circuit(num_qubits, num_paulis, weight, seed=0):
     seeds = np.random.randint(0, 2**32, num_paulis)
     paulis = [random_local_pauli(num_qubits, weight, seed) for seed in seeds]
     return PauliCircuit(paulis)
-
-
-def random_node_distribution(M):
-    return [binom(M, m) * 2 ** (m - M) / (3 / 2) ** M for m in range(M + 1)]
-
-
-def random_norm_distribution(M):
-    return [binom(M, m) * 2 ** (-M) for m in range(M + 1)]
 
 
 class RandomLocalCircuit:

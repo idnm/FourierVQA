@@ -6,7 +6,7 @@ from qiskit.circuit import Parameter
 from qiskit.circuit.library import RXGate, RYGate, RZGate, RZZGate, RZXGate
 from qiskit.quantum_info import random_clifford, Operator, Pauli, random_pauli
 
-from fourier_vqa import PauliCircuit, FourierComputation, PauliSpace
+from fourier_vqa import PauliCircuit, FourierExpansionVQA, PauliSpace
 
 
 def random_clifford_phi(num_qubits, num_parametric_gates, num_duplicate_parameters=0, seed=0):
@@ -62,8 +62,8 @@ def test_fourier_computation_plain():
                 observable = random_pauli(num_qubits, seed=seed)
 
                 try:
-                    fourier_computation = FourierComputation(pauli_circuit, observable)
-                    fourier_computation.run(check_admissible=False, verbose=False)
+                    fourier_computation = FourierExpansionVQA(pauli_circuit, observable)
+                    fourier_computation.compute(check_admissible=False, verbose=False)
                 except ValueError as e:
                     # Occurs when all Pauli operators have no X components.
                     continue
@@ -84,8 +84,8 @@ def test_fourier_computation_with_filtering():
                 observable = random_pauli(num_qubits, seed=seed)
 
                 try:
-                    fourier_computation = FourierComputation(pauli_circuit, observable)
-                    fourier_computation.run(check_admissible=True, verbose=False)
+                    fourier_computation = FourierExpansionVQA(pauli_circuit, observable)
+                    fourier_computation.compute(check_admissible=True, verbose=False)
                 except ValueError as e:
                     continue
 
@@ -157,7 +157,7 @@ def test_estimate_node_count_limited_volume():
     num_qubits = 15
     num_paulis = 60
 
-    fourier_computation = FourierComputation.random(num_qubits, num_paulis, seed=0)
+    fourier_computation = FourierExpansionVQA.random(num_qubits, num_paulis, seed=0)
 
     volume_stats = fourier_computation.estimate_node_count_limited_volume(max_nodes=5000)
     mc_stats = fourier_computation.estimate_node_count_monte_carlo(num_samples=5000)
