@@ -361,42 +361,60 @@ class FourierExpansionVQA:
         node.remove_commuting_paulis(self.pauli_space)
 
         branch_is_admissible = True
-        while node.num_paulis > 0 and branch_is_admissible:
-            random_bool = np.random.randint(2)
+        probability = 1
+        # while node.num_paulis > 0 and branch_is_admissible:
+        # print(node)
+        while node.num_paulis > 0:
 
-            # With probability 1/2 observable is unchanged or multiplied by the next pauli.
-            if random_bool:
-                node = node.branch_cos(self.pauli_space)
-            else:
-                node = node.branch_sin(self.pauli_space)
-
-            node.remove_commuting_paulis(self.pauli_space)
             if check_admissible and self.pauli_space.rank(node.num_paulis) < self.pauli_space.dim:
                 node.update_admissibility(self.pauli_space)
                 branch_is_admissible = node.is_admissible
+                if not branch_is_admissible:
+                    break
+                cos_admissible, sin_admissible = node.cos_sin_admissible(self.pauli_space)
+            else:
+                cos_admissible, sin_admissible = True, True
 
-        node.compute_expectation_value()
-        return node
+            # If both branches are admissible, we choose one randomly and decrease the probability.
+            # If only a single branch is admissible, we choose that branch, without decreasing the probability.
+            if cos_admissible and sin_admissible:
+                # With probability 1/2 observable is unchanged or multiplied by the next pauli.
+                probability /= 2.
+                random_bool = np.random.randint(2)
+                if random_bool:
+                    branching_function = node.branch_cos
+                else:
+                    branching_function = node.branch_sin
+            elif cos_admissible and not sin_admissible:
+                branching_function = node.branch_cos
+            elif not cos_admissible and sin_admissible:
+                branching_function = node.branch_sin
+            else:
+                raise RuntimeError('Should not be here')
+
+            node = branching_function(self.pauli_space)
+            node.remove_commuting_paulis(self.pauli_space)
+            # if check_admissible and self.pauli_space.rank(node.num_paulis) < self.pauli_space.dim:
+            #     node.update_admissibility(self.pauli_space)
+            #     branch_is_admissible = node.is_admissible
+
+        if branch_is_admissible:
+            node.compute_expectation_value()
+        else:
+            node.expectation_value = 0
+        return node, probability
 
     def estimate_node_count_monte_carlo(self, num_samples=1000, check_admissible=False, seed=0):
         np.random.seed(seed)
         seeds = np.random.randint(0, 2**32, num_samples)
 
         all_nodes = [self.sample(check_admissible, seed) for seed in tqdm(seeds)]
-        nonzero_nodes = [node for node in all_nodes if node.expectation_value != 0]
+        nonzero_nodes = [[node, prob] for node, prob in all_nodes if node.expectation_value != 0]
 
+        estimated_num_all_nodes = sum([1./prob for _, prob in all_nodes]) / len(all_nodes)
+        estimated_num_nonzero_nodes = sum([1./prob for _, prob in nonzero_nodes]) / len(all_nodes)
 
-        stats = []
-        for nodes in [all_nodes, nonzero_nodes]:
-            # The algorithms samples with probability proportional to the norm!
-            norm_stats = self.level_statistic(nodes, self.num_paulis)
-            norm_distribution = np.array(norm_stats) / len(all_nodes)  # In both cases we normalize on all nodes!
-            norm_distribution = np.trim_zeros(norm_distribution, trim='b')
-            node_stats = norm_distribution * 2.**np.arange(len(norm_distribution))
-            stats.append(sum(node_stats))
-
-        num_all_nodes, num_nonzero_nodes = stats
-        return num_all_nodes, num_nonzero_nodes
+        return estimated_num_all_nodes, estimated_num_nonzero_nodes
 
     def estimate_node_count_limited_volume(self, max_nodes=1000, seed=0, verbose=True):
         np.random.seed(seed)
@@ -576,6 +594,22 @@ class FourierComputationNode:
             if pauli_space.decomposition_requires_paulis(self.observable_decomposition) <= self.num_paulis:
                 self.is_admissible = True
 
+    def cos_sin_admissible(self, pauli_space):
+        # If the branching Pauli is dependent, both branches are admissible.
+        # If it is independent a single branch is admissible.
+
+        idx_branching_pauli = self.num_paulis - 1
+        if pauli_space.is_independent(idx_branching_pauli):
+            # If observable requires the branching Pauli in its decomposition the cos branch is not admissible.
+            if pauli_space.decomposition_contains_pauli(self.observable_decomposition, idx_branching_pauli):
+                cos_admissible, sin_admissible = False, True
+            # Else the sin branch is not admissible.
+            else:
+                cos_admissible, sin_admissible = True, False
+        else:
+            cos_admissible, sin_admissible = True, True
+        return cos_admissible, sin_admissible
+
     def branch_and_refine(self, pauli_space, check_admissible):
 
         # Each node processes here if at the branching point. Before branching,
@@ -597,16 +631,7 @@ class FourierComputationNode:
                 incomplete_nodes = []
                 return incomplete_nodes, complete_nodes
 
-            # If the branching Pauli is dependent, both branches are admissible.
-            # If it is independent a single branch is admissible.
-            idx_branching_pauli = self.num_paulis-1
-            if pauli_space.is_independent(idx_branching_pauli):
-                # If observable requires the branching Pauli in its decomposition the cos branch is not admissible.
-                if pauli_space.decomposition_contains_pauli(self.observable_decomposition, idx_branching_pauli):
-                    cos_admissible = False
-                # Else the sin branch is not admissible.
-                else:
-                    sin_admissible = False
+            cos_admissible, sin_admissible = self.cos_sin_admissible(pauli_space)
 
         # Branch and remove commuting paulis from each branch.
         nodes = []
