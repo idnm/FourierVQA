@@ -12,10 +12,9 @@ from tqdm import tqdm
 
 
 # TODO
-# - Report number of nodes in status
-# - Profile runtime. How many nodes are processed?
+# - Profile monte-carlo sampling. Can speed up by pre-computing decompositions?
+# - Clean up code.
 # - Translate fourier expansion into JAX transformable loss.
-# - Check numerically if additional filtering is feasible?
 # -* Can make all computations JAXable?
 # -* Can parallelize them for GPU?
 
@@ -394,9 +393,6 @@ class FourierExpansionVQA:
 
             node = branching_function(self.pauli_space)
             node.remove_commuting_paulis(self.pauli_space)
-            # if check_admissible and self.pauli_space.rank(node.num_paulis) < self.pauli_space.dim:
-            #     node.update_admissibility(self.pauli_space)
-            #     branch_is_admissible = node.is_admissible
 
         if branch_is_admissible:
             node.compute_expectation_value()
@@ -404,11 +400,11 @@ class FourierExpansionVQA:
             node.expectation_value = 0
         return node, probability
 
-    def estimate_node_count_monte_carlo(self, num_samples=1000, check_admissible=False, seed=0):
+    def estimate_node_count_monte_carlo(self, num_samples=1000, check_admissible=False, seed=0, verbose=True):
         np.random.seed(seed)
         seeds = np.random.randint(0, 2**32, num_samples)
 
-        all_nodes = [self.sample(check_admissible, seed) for seed in tqdm(seeds)]
+        all_nodes = [self.sample(check_admissible, seed) for seed in tqdm(seeds, disable=not verbose)]
         nonzero_nodes = [[node, prob] for node, prob in all_nodes if node.expectation_value != 0]
 
         estimated_num_all_nodes = sum([1./prob for _, prob in all_nodes]) / len(all_nodes)
@@ -756,29 +752,27 @@ class FourierStats:
         if max_level is None:
             max_level = M
 
-        node_samples = np.array([sample.node_stats_normalized for sample in samples])
-        norm_samples = np.array([sample.norm_stats_normalized for sample in samples])
-
-        # norm_samples = all_node_samples * 2. ** (-np.arange(M + 1))
-        # normilized_node_samples = all_node_samples / all_node_samples.sum(axis=1, keepdims=True)
+        node_samples = np.array([sample.node_stats for sample in samples])
+        norm_samples = np.array([sample.norm_stats for sample in samples])
 
         node_means = np.mean(node_samples, axis=0)[:max_level + 1]
         node_variations = np.std(node_samples, axis=0)[:max_level + 1]
 
+        node_means_normalized = node_means / node_means.sum()
+        node_variations_normalized = node_variations / node_means.sum()
+
         norm_means = np.mean(norm_samples, axis=0)[:max_level + 1]
         norm_variations = np.std(norm_samples, axis=0)[:max_level + 1]
 
-        plt.fill_between(range(max_level + 1), node_means - node_variations, node_means + node_variations, alpha=0.5,
-                         color=FourierStats.node_color, edgecolors='black', label='node variance');
-        plt.fill_between(range(max_level + 1), norm_means - norm_variations, norm_means + norm_variations, alpha=0.5,
-                         color=FourierStats.norm_color, edgecolors='black', label='norm variance');
+        plt.fill_between(
+            range(max_level + 1),
+            node_means_normalized - node_variations_normalized,
+            node_means_normalized + node_variations_normalized,
+            alpha=0.5, color=FourierStats.node_color, edgecolors='black', label='node variance');
+        plt.fill_between(
+            range(max_level + 1),
+            norm_means - norm_variations,
+            norm_means + norm_variations,
+            alpha=0.5, color=FourierStats.norm_color, edgecolors='black', label='norm variance');
 
-        FourierStats.plot_scatter(node_means, norm_means, max_level)
-        # plt.scatter(range(max_level + 1), node_means, color=node_color, edgecolors='black', label='node distribution');
-        # plt.scatter(range(max_level + 1), norm_means, color=norm_color, edgecolors='black', label='norm distribution');
-
-        # plt.grid(linestyle='--')
-        # plt.ylabel('Probability', fontsize=12)
-        # plt.xlabel('Level', fontsize=12)
-        # #     plt.title(f'num_qubits={num_qubits}, num_paulis={M}, num_samples={num_samples}')
-        # plt.legend()
+        FourierStats.plot_scatter(node_means_normalized, norm_means, max_level)

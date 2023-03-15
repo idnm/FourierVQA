@@ -179,6 +179,31 @@ def two_local_circuit(num_qubits, num_paulis):
     return qc
 
 
+def brickwall_circuit(num_qubits, num_blocks):
+    qc = QuantumCircuit(num_qubits)
+
+    parameters = [[Parameter(f'x_{j}{i}') for i in range(4)] for j in range(num_blocks)]
+
+    i = 0
+    s = 1
+    for block_params in parameters:
+        if i >= num_qubits - 1:
+            i = s
+            s = (s + 1) % 2
+
+        j = (i + 1) % num_qubits
+
+        qc.cz(i, j)
+        qc.rx(block_params[0], i)
+        qc.rx(block_params[1], j)
+        qc.rz(block_params[2], i)
+        qc.rz(block_params[3], j)
+
+        i += 2
+
+    return qc
+
+
 def random_local_pauli(num_qubits, weight, seed=0):
     np.random.seed(seed)
     w = 0
