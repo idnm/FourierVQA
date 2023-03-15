@@ -116,7 +116,7 @@ Substituting expansion \eqref{U expansion} into the loss function gives
 \end{align}
 In contrast to the expansion of the unitary \eqref{U expansion}, expansion of the loss function when expressed as a polynomial in $\cos\phi_m,\sin\phi_m$, i.e. as the standard Fourier series, is not homogeneous, see App.~\ref{app explicit} for details. Let us organize the Fourier expansion of the loss function by level
 \begin{align}
-	F(\pmb\phi)=\sum_{m=0}^M F_m(\pmb\phi) \ .
+	F(\pmb\phi)=\sum_{m=0}^M F_m(\pmb\phi) \ . \label{Fm def}
 \end{align}
 Each level $F_m(\pmb\phi)$ only involves monomials of order $m$.
 There are $\binom{M}{m}$ possible subsets of parameters at level $m$ each giving rise to $2^m$ trigonometric monomials. Hence, the total number of independent coefficients in the Fourier expansion is
@@ -367,10 +367,9 @@ We consider hardware-efficient circuit with brick wall arhictecture, where each 
 
 
 \appendix
-\section{F} \label{app explicit}
-For the sake of clarity, here we give a more detailed description of the general structure of Fourier expansion for the loss function introduced in Sec.~\ref{sec VQA}.
-
-Let us first illustrate trigonometric expansion of the unitary \eqref{U expansion} for the case with $M=2$ angles
+\section{Structure of a generic Fourier expansion} \label{app explicit}
+\subsection{Level expansion and number of terms}
+For the sake of clarity, here we give a more detailed description of the general structure of Fourier expansion for the loss function introduced in Sec.~\ref{sec VQA}. Let us first illustrate trigonometric expansion of the unitary \eqref{U expansion} for the case with $M=2$ angles
 \begin{align}
 	U(\phi_1,\phi_2) = U_{00}\cos\frac{\phi_1}{2}\cos\frac{\phi_2}{2}+U_{01}\cos\frac{\phi_1}{2}\sin\frac{\phi_2}{2}+U_{10}\sin\frac{\phi_1}{2}\cos\frac{\phi_2}{2}+U_{11}\sin\frac{\phi_1}{2}\sin\frac{\phi_2}{2} \ . \label{U2}
 \end{align}
@@ -380,26 +379,22 @@ Note that trigonometric monomials here have the same degree and period $4\pi$. S
 \end{align}
 and we wrote explicitly only the contribution from the first term.
 
-
-Each summand is of the form $F_{i,j,\dots}(\phi_i,\phi_j,\dots)=\sum_{i_1,i_2,\dots}c^{i_1,i_2,\dots}_{m_1,m_2,\dots}t_{m_1, m_2,\dots}(\phi_{m_1},\phi_{m_2},\dots)$
+More generally, terms in the expansion \eqref{Fm def} assume the following form
 \begin{align}
-F_m(\phi_m)=A_m\cos\phi_m+B_m\sin\phi_m
+F_0=\text{const},\quad
+F_1(\pmb\phi)=\sum_{i=1}^M F_i(\phi_i), \quad F_2(\pmb\phi)=\sum_{i,j=1}^M F_{ij}(\phi_i,\phi_j), \quad F_3(\pmb\phi)=\sum_{i,j,k=1}^M F_{ijk}(\phi_i,\phi_j,\phi_k),\quad\dots
 \end{align}
-
-\begin{multline}
-F_{ml}(\phi_m,\phi_l)=A_{ml}\cos\phi_m\cos\phi_l+B_{ml}\cos\phi_m\sin\phi_l+\\C_{ml}\sin\phi_m\cos\phi_l+D_{ml}\sin\phi_m\sin\phi_l\dots
-\end{multline}
-
+Here
 \begin{align}
 \begin{split}
-&F_0=\text{const},\\
-&F_1(\pmb\phi)=\sum_{i=1}^M F_i(\phi_i),\\
-&F_2(\pmb\phi)=\sum_{i,j=1}^M F_{ij}(\phi_i,\phi_j),\\
-&F_3(\pmb\phi)=\sum_{i,j,k=1}^M F_{ijk}(\phi_i,\phi_j, \phi_k)\dots
+&F_i(\phi_i)=A_i\cos\phi_i+B_i\sin\phi_i\\
+&F_{ij}(\phi_i,\phi_j)=A_{ij}\cos\phi_i\cos\phi_j+B_{ij}\cos\phi_i\sin\phi_j+C_{ij}\sin\phi_i\cos\phi_j+D_{ij}\sin\phi_i\sin\phi_j\\
+&\dots
 \end{split}
 \end{align}
-
- For instance, $F_i(\phi_i)=\Braket{F(\pmb\phi)-F_0}_{\pmb\phi\neq\phi_i}$, i.e. averaging over all angles except $\phi_i$ only leaves first-order monomials involving $\phi_i$. 
+At each level $m$ there are $\binom{M}{m}$ subsets of parameters, enumerating possible indices of homogeneous polynomials $F_{i_1\dots i_m}$. To define the polynomial for each parameter configuration requires specifying $2^m$ coefficients. This leads to the counting \eqref{3M coeffs} for the total number of coefficients in the Fourier series.
+\subsection{Coefficients from averages}
+Trivially $F_0=\Braket{F(\pmb\phi)}_{\pmb\phi}$. Higher order terms can be obtained similarly. For instance, $F_i(\phi_i)=\Braket{F(\pmb\phi)-F_0}_{\pmb\phi\neq\phi_i}$, i.e. averaging over all angles except $\phi_i$ only leaves first-order monomials involving a given angle $\phi_i$. Higher order terms can be found recursively. Note that in this prescription to compute terms at level $m$ requires to first compute and subtract the contribution all levels below $m$.
 \section{Details of numerical computations}
 \subsection{QAOA} \label{app QAOA}
 Given a graph $G$ with vertices $E_{ij}$, a single layer of the QAOA circuit consists of Pauli rotation gates $Z_iZ_j(\gamma_{ij})$ for each edge $E_{ij}$, followed by the sequence of single-qubit $X_i(\beta_i)$ gates placed on every qubit. Note that in the standard formulation of QAOA, $\gamma_{ij}=\gamma, \beta_i=\beta$ $\gamma_{ij}$ i.e. all $ZZ$ gates and all $X$ gates have the same parameters within each layer. However, taking this correlation into account does not simplify our analysis and we will not impose it. Single layer repeated $p$ times gives an instance of QAOA${}_p$ circuit. The Hamiltonian is given by the sum of all $Z$-Pauli generators $H=\sum_{E_{ij}}Z_iZ_j$.
