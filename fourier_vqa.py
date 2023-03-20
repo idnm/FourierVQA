@@ -496,7 +496,7 @@ class FourierExpansionVQA:
         num_incomplete_nodes = len(self.incomplete_nodes)
         volume = num_incomplete_nodes*self.num_qubits
 
-        return f'cov {covered:.2%} abs {absolute:.2g} rel {relative:.2%} rem {remaining:.2g} nodes {num_incomplete_nodes:.2e} vol {volume:.2e}'
+        return f'\u0394={covered:.2%} norm absolute={absolute:.2g} norm relative={relative:.2%} #nodes={num_incomplete_nodes:.2e}'
 
     @staticmethod
     def level_statistic(nodes, M):
@@ -517,7 +517,7 @@ class FourierExpansionVQA:
 
     def stats(self, only_nonzero=False):
         if only_nonzero:
-            nodes = [node for node in self.complete_nodes if node.observable != 0]
+            nodes = [node for node in self.complete_nodes if node.expectation_value != 0]
         else:
             nodes = self.complete_nodes
 
@@ -680,10 +680,13 @@ class FourierStats:
         self.node_stats_normalized = np.array(self.node_stats) / sum(self.node_stats)
         self.norm_stats_normalized = np.array(self.norm_stats) / sum(self.norm_stats)
         self.num_nodes = sum(self.node_stats)
-        self.num_qubits = self.nodes[0].observable.num_qubits
 
     node_color = 'blue'
     norm_color = 'orange'
+
+    @property
+    def num_qubits(self):
+        return self.nodes[0].observable.num_qubits
 
     @staticmethod
     def _norm_from_node_stats(node_stats):
@@ -724,25 +727,25 @@ class FourierStats:
         plt.legend()
 
     @staticmethod
-    def plot_scatter(node_stats, norm_stats, max_level):
+    def plot_scatter(node_stats, norm_stats, max_level, fontsize=16):
         plt.scatter(range(max_level + 1), node_stats, color=FourierStats.node_color, edgecolors='black',
-                    label='node distribution');
+                    label='coefficient distribution');
         plt.scatter(range(max_level + 1), norm_stats, color=FourierStats.norm_color, edgecolors='black',
                     label='norm distribution');
 
         plt.grid(linestyle='--')
-        plt.ylabel('Probability', fontsize=12)
-        plt.xlabel('Level', fontsize=12)
+        plt.ylabel('Probability', fontsize=fontsize)
+        plt.xlabel('Level', fontsize=fontsize)
 
     @staticmethod
     def plot_random(M):
         plt.plot(range(M + 1), FourierStats.random_node_distribution(M), color=FourierStats.node_color, linewidth=2, alpha=0.9,
-                 label='random node distribution')
+                 label='coefficient distribution (random)')
         plt.plot(range(M + 1), FourierStats.random_norm_distribution(M), color=FourierStats.norm_color, linewidth=2, alpha=0.9,
-                 label='random norm distribution')
+                 label='norm distribution (random)')
 
     @staticmethod
-    def plot_several(samples, plot_random=True, max_level=None):
+    def plot_several(samples, plot_random=True, max_level=None, fontsize=16):
 
         M = samples[0].num_paulis
 
@@ -764,15 +767,18 @@ class FourierStats:
         norm_means = np.mean(norm_samples, axis=0)[:max_level + 1]
         norm_variations = np.std(norm_samples, axis=0)[:max_level + 1]
 
+        norm_means_normalized = norm_means / norm_means.sum()
+        norm_variations_normalized = norm_variations / norm_means.sum()
+
         plt.fill_between(
             range(max_level + 1),
             node_means_normalized - node_variations_normalized,
             node_means_normalized + node_variations_normalized,
-            alpha=0.5, color=FourierStats.node_color, edgecolors='black', label='node variance');
+            alpha=0.5, color=FourierStats.node_color, edgecolors='black', label='coefficient variance');
         plt.fill_between(
             range(max_level + 1),
-            norm_means - norm_variations,
-            norm_means + norm_variations,
+            norm_means_normalized - norm_variations_normalized,
+            norm_means_normalized + norm_variations_normalized,
             alpha=0.5, color=FourierStats.norm_color, edgecolors='black', label='norm variance');
 
-        FourierStats.plot_scatter(node_means_normalized, norm_means, max_level)
+        FourierStats.plot_scatter(node_means_normalized, norm_means_normalized, max_level, fontsize=fontsize)

@@ -169,3 +169,9 @@ def test_estimate_node_count_limited_volume():
 
     print(f'vol {volume_tot:.2e}|{volume_tot/exact:.2%} mc {mc_tot:.2e}|{mc_tot/exact:.2%}')
 
+
+def test_limits():
+    num_qubits = 30
+    num_paulis = 25
+    fourier_expansion = FourierExpansionVQA.random(num_qubits, num_paulis)
+    fourier_expansion.compute()
