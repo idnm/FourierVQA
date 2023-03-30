@@ -494,7 +494,6 @@ class FourierExpansionVQA:
     def status(self):
         covered, relative, absolute, remaining = self.status_data()
         num_incomplete_nodes = len(self.incomplete_nodes)
-        volume = num_incomplete_nodes*self.num_qubits
 
         return f'\u0394={covered:.2%} norm absolute={absolute:.2g} norm relative={relative:.2%} #nodes={num_incomplete_nodes:.2e}'
 
@@ -510,8 +509,8 @@ class FourierExpansionVQA:
         return sum([n / (2 ** m) for m, n in enumerate(stats)])
 
     def evaluate_loss_at(self, parameters):
-        state0 = StabilizerState(Pauli('I'*self.pauli_circuit.num_qubits))
-        results = [state0.expectation_value(node.observable)*node.monomial(parameters) for node in self.complete_nodes]
+        # state0 = StabilizerState(Pauli('I'*self.pauli_circuit.num_qubits))
+        results = [node.expectation_value*node.monomial(parameters) for node in self.complete_nodes]
 
         return sum(results)
 
@@ -665,9 +664,16 @@ class FourierComputationNode:
         # expectation_value = state.expectation_value(self.observable)
 
         absolute_expectation_value = not np.any(self.observable.x)  # Observable should have no X operators.
-        sign = -1*(self.observable.phase == 2)  # Phases 1 and 3 correspond to -1j and 1j and never appear. Phase 2 is -1.
+
+        # Phases 1 and 3 correspond to -1j and 1j and never appear. Phase 2 is -1.
+        if self.observable.phase == 2:
+            sign = -1
+        elif self.observable.phase == 0:
+            sign = 1
+        else:
+            raise ValueError(f'Observable {self.observable} is not Hermitian')
+
         self.expectation_value = absolute_expectation_value * sign
-        # return expectation_value
 
 
 class FourierStats:
@@ -677,8 +683,7 @@ class FourierStats:
 
         self.node_stats = self._stats_from_nodes(self.nodes, self.num_paulis)
         self.norm_stats = self._norm_from_node_stats(self.node_stats)
-        self.node_stats_normalized = np.array(self.node_stats) / sum(self.node_stats)
-        self.norm_stats_normalized = np.array(self.norm_stats) / sum(self.norm_stats)
+
         self.num_nodes = sum(self.node_stats)
 
     node_color = 'blue'
@@ -722,7 +727,10 @@ class FourierStats:
         if max_level is None:
             max_level = M
 
-        self.plot_scatter(self.node_stats_normalized, self.norm_stats_normalized, max_level)
+        node_stats_normalized = np.array(self.node_stats)/sum(self.node_stats)
+        norm_stats_normalized = np.array(self.norm_stats)/sum(self.norm_stats)
+
+        self.plot_scatter(node_stats_normalized, norm_stats_normalized, max_level)
         plt.title(f'number of  qubits={self.num_qubits}, number of paulis={self.num_paulis}')
         plt.legend()
 
