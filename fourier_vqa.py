@@ -63,6 +63,12 @@ class PauliCircuit:
         state = Statevector(qc.bind_parameters(parameters_dict))
         return state.expectation_value(observable)
 
+    def parameters_from_pqc_parameters(self, pqc_parameters):
+        if type(pqc_parameters) != dict:
+            raise ValueError(f'Parameters need to be passed as a dict.')
+
+        return [pqc_parameters[p] for p in self.parameters]
+
     @staticmethod
     def from_parameterized_circuit(qc):
         gates, parameters = PauliCircuit.clifford_pauli_data(qc)
@@ -509,7 +515,9 @@ class FourierExpansionVQA:
         return sum([n / (2 ** m) for m, n in enumerate(stats)])
 
     def evaluate_loss_at(self, parameters):
-        # state0 = StabilizerState(Pauli('I'*self.pauli_circuit.num_qubits))
+        if type(parameters) == dict:
+            parameters = self.pauli_circuit.parameters_from_pqc_parameters(parameters)
+
         results = [node.expectation_value*node.monomial(parameters) for node in self.complete_nodes]
 
         return sum(results)

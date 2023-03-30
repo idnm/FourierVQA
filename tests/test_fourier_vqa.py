@@ -4,7 +4,7 @@ import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
 from qiskit.circuit.library import RXGate, RYGate, RZGate, RZZGate, RZXGate
-from qiskit.quantum_info import random_clifford, Operator, Pauli, random_pauli
+from qiskit.quantum_info import random_clifford, Operator, Pauli, random_pauli, Statevector
 
 from fourier_vqa import PauliCircuit, FourierExpansionVQA, PauliSpace
 
@@ -55,7 +55,7 @@ def test_pauli_circuit_reconstruction(num_qubits=3, num_parametric_gates=4):
 def test_fourier_computation_plain():
 
     for num_qubits in range(1, 5):
-        for num_parameters in range(1, 6):
+        for num_parameters in range(1, 15, 3):
             for seed in range(5):
                 qc = random_clifford_phi(num_qubits, num_parameters, seed=seed)
                 pauli_circuit = PauliCircuit.from_parameterized_circuit(qc)
@@ -68,16 +68,17 @@ def test_fourier_computation_plain():
                     # Occurs when all Pauli operators have no X components.
                     continue
 
-                params = np.random.rand(num_parameters)
+                params = {p: val for p, val in zip(qc.parameters, np.random.rand(num_parameters))}
+                expectation_from_circuit = Statevector(qc.bind_parameters(params)).expectation_value(observable)
                 assert np.allclose(
-                    pauli_circuit.expectation_value(observable, params),
+                    expectation_from_circuit,
                     fourier_computation.evaluate_loss_at(params)
                 )
 
 
 def test_fourier_computation_with_filtering():
     for num_qubits in range(1, 5):
-        for num_parameters in range(1, 6):
+        for num_parameters in range(1, 15, 3):
             for seed in range(5):
                 qc = random_clifford_phi(num_qubits, num_parameters, seed=seed)
                 pauli_circuit = PauliCircuit.from_parameterized_circuit(qc)
@@ -89,11 +90,12 @@ def test_fourier_computation_with_filtering():
                 except ValueError as e:
                     continue
 
-                params = np.random.rand(num_parameters)
+                params = {p: val for p, val in zip(qc.parameters, np.random.rand(num_parameters))}
+                expectation_from_circuit = Statevector(qc.bind_parameters(params)).expectation_value(observable)
+
                 assert np.allclose(
-                    pauli_circuit.expectation_value(observable, params),
-                    fourier_computation.evaluate_loss_at(params)
-                )
+                    expectation_from_circuit,
+                    fourier_computation.evaluate_loss_at(params))
 
 
 def test_pauli_space():
