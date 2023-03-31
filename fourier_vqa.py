@@ -5,18 +5,10 @@ from matplotlib import pyplot as plt
 from qiskit import QuantumCircuit, QiskitError
 from qiskit.circuit import Parameter
 from qiskit.circuit.library import PauliEvolutionGate
-from qiskit.quantum_info import Clifford, StabilizerState, Pauli, Statevector, Operator, \
+from qiskit.quantum_info import Clifford, Pauli, Statevector, Operator, \
     pauli_basis, random_pauli
 from scipy.special import binom
 from tqdm import tqdm
-
-
-# TODO
-# - Profile monte-carlo sampling. Can speed up by pre-computing decompositions?
-# - Clean up code.
-# - Translate fourier expansion into JAX transformable loss.
-# -* Can make all computations JAXable?
-# -* Can parallelize them for GPU?
 
 
 class PauliCircuit:
