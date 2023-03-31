@@ -352,6 +352,10 @@ class FourierExpansionVQA:
     def num_paulis(self):
         return self.pauli_circuit.num_paulis
 
+    @property
+    def nonzero_nodes(self):
+        return [node for node in self.complete_nodes if node.expectation_value != 0]
+
     @staticmethod
     def random(num_qubits, num_paulis, seed=0):
         np.random.seed(seed)
