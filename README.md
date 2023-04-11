@@ -1,7 +1,7 @@
 # Fourier expansion in variational quantum algorithms
 
 Proof-of-principle implementation of the algorithm computing the Fourier series expansion of loss functions in variational quantum algorithms, see
-https://arxiv.org/abs/?? for the original paper. Can handle e.g. random 50-qubit circuits with ~80 non-local Pauli rotations (and more or less arbitrary Clifford gates) on a laptop in minutes. A more efficient implementation is likely to allow scaling up circuit sizes by 50-100%. [This notebook](https://github.com/idnm/FourierVQA/blob/master/experiments.ipynb) contains usage examples and numerical data presented in the paper. 
+https://arxiv.org/abs/2304.03787 for the original paper. Can handle e.g. random 50-qubit circuits with ~80 non-local Pauli rotations (and more or less arbitrary Clifford gates) on a laptop in minutes. A more efficient implementation is likely to allow scaling up circuit sizes by 50-100%. [This notebook](https://github.com/idnm/FourierVQA/blob/master/experiments.ipynb) contains usage examples and numerical data presented in the paper. 
 
 ## Minimal example
 
