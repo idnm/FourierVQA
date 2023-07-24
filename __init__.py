@@ -1,1 +1,1 @@
-import fourier_vqa
+# import fourier_vqa

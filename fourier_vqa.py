@@ -695,7 +695,7 @@ class FourierStats:
 
     @property
     def num_qubits(self):
-        return self.nodes[0].observable.num_qubits
+        return self.nodes[0].observables.num_qubits
 
     @staticmethod
     def _norm_from_node_stats(node_stats):
