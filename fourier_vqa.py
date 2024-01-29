@@ -153,7 +153,7 @@ class PauliCircuit:
         # Check that gate(pi) is a pauli gate.
         gate_at_pi = Operator(qc.bind_parameters([np.pi])).data
 
-        for pauli in pauli_basis(gate.num_qubits):
+        for pauli in pauli_basis(gate.num_qubits, pauli_list=True):
             if np.allclose(gate_at_pi, -1j * pauli.to_matrix()):
                 pauli = pauli
                 break
