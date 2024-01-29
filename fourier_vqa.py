@@ -451,12 +451,15 @@ class FourierExpansionVQA:
             self.incomplete_nodes = [root]
             self.complete_nodes = []
 
-    def compute(self, check_admissible=True, verbose=True):
+    def compute(self, check_admissible=True, verbose=True, max_level=None, max_terms=None):
+
+        if max_level is None:
+            max_level = self.pauli_space.num_paulis
 
         self.initialize_computation()
 
         # Run recursive algorithm. Each iteration computes all Fourier terms of at the next level.
-        progress_bar = tqdm(range(self.pauli_space.num_paulis), disable=not verbose)
+        progress_bar = tqdm(range(max_level+1), disable=not verbose)
         for _ in progress_bar:
             self.incomplete_nodes, self.complete_nodes = self.iteration(
                 self.incomplete_nodes, self.complete_nodes, check_admissible)
@@ -465,6 +468,9 @@ class FourierExpansionVQA:
                 progress_bar.set_description(self.status(), refresh=True)
 
             if len(self.incomplete_nodes) == 0:
+                break
+
+            if max_terms and len(self.nonzero_nodes) >= max_terms:
                 break
 
     def iteration(self, incomplete_nodes, complete_nodes, check_admissible):

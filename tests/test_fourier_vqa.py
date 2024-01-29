@@ -173,7 +173,10 @@ def test_estimate_node_count_limited_volume():
 
 
 def test_limits():
-    num_qubits = 30
+    num_qubits = 10
     num_paulis = 25
     fourier_expansion = FourierExpansionVQA.random(num_qubits, num_paulis)
+
     fourier_expansion.compute()
+    fourier_expansion.compute(max_level=15)
+    fourier_expansion.compute(max_terms=2)
